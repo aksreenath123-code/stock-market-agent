@@ -83,11 +83,10 @@ def get_ai_analysis(technical_data):
     if not technical_data:
         return []
     
-    print("Asking AI (Gemini 2.0 Flash) for Market Analysis in Batches...")
+    print("Asking AI (Gemini 3.6 Flash) for Market Analysis in Batches...")
     client = genai.Client(api_key=GEMINI_API_KEY)
     all_ai_results = []
     
-    # 200 സ്റ്റോക്കുകൾ വരെ സുഗമമായി ചെയ്യാൻ 25 സ്റ്റോക്കുകൾ വീതം ബാച്ചുകളാക്കുന്നു
     batch_size = 25
     batches = [technical_data[i:i + batch_size] for i in range(0, len(technical_data), batch_size)]
     
@@ -110,9 +109,9 @@ def get_ai_analysis(technical_data):
         """
         
         try:
-            # നിലവിലുള്ള ഏറ്റവും സ്റ്റേബിൾ ആയ genai മോഡൽ ഉപയോഗിക്കുന്നു
+            # ഗൂഗിൾ നിർദ്ദേശിച്ച ഏറ്റവും പുതിയ gemini-3.6-flash മോഡൽ ഉപയോഗിക്കുന്നു
             response = client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-3.6-flash',
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -129,9 +128,8 @@ def get_ai_analysis(technical_data):
         except Exception as e:
             print(f"AI Analysis Failed for Batch {index + 1}: {e}")
         
-        # ബാച്ചുകൾക്കിടയിൽ 3 സെക്കൻഡ് ഗ്യാപ്പ് നൽകുന്നു
         if index < len(batches) - 1:
-            time.sleep(3)
+            time.sleep(2)
             
     return all_ai_results
 
@@ -169,7 +167,7 @@ def send_email(technical_data, ai_analysis):
         </style>
     </head>
     <body>
-        <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">🤖 Gemini 2.0 Flash: Intraday Action Report</h2>
+        <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">🤖 Gemini 3.6 Flash: Intraday Action Report</h2>
         <p style="color: #555;"><b>Time:</b> {now}</p>
         <table>
             <tr>
@@ -200,7 +198,7 @@ def send_email(technical_data, ai_analysis):
             </tr>
         """
     
-    html += "</table><br><p style='font-size: 12px; color: #999;'>Happy Trading! - <i>Powered by Gemini 2.0 Flash & Market Agent Pro</i></p></body></html>"
+    html += "</table><br><p style='font-size: 12px; color: #999;'>Happy Trading! - <i>Powered by Gemini 3.6 Flash & Market Agent Pro</i></p></body></html>"
 
     msg = MIMEMultipart()
     msg['From'] = GMAIL_SENDER
