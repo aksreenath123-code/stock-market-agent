@@ -109,11 +109,13 @@ def scan_tickers_for_swing(ticker_list):
 
 # ==================== 5. INDIAN MARKET SCANNER (8:00 AM IST) ====================
 def fetch_indian_market():
+    # കുറഞ്ഞത് 5 സ്റ്റോക്കുകൾ കിട്ടാൻ കൂടുതൽ ലിക്വിഡ് സ്റ്റോക്കുകൾ ചേർത്തു
     indian_tickers = [
         "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
         "BHARTIARTL.NS", "LT.NS", "SBIN.NS", "TATASTEEL.NS", "TATAMOTORS.NS",
         "ADANIENT.NS", "KOTAKBANK.NS", "AXISBANK.NS", "ITC.NS", "SUNPHARMA.NS",
-        "TITAN.NS", "BAJFINANCE.NS", "MARUTI.NS", "JSWSTEEL.NS", "BEL.NS"
+        "TITAN.NS", "BAJFINANCE.NS", "MARUTI.NS", "JSWSTEEL.NS", "BEL.NS",
+        "M&M.NS", "HCLTECH.NS", "WIPRO.NS", "HAL.NS", "ZOMATO.NS", "TRENT.NS", "BAJAJFINSV.NS"
     ]
     
     print("🇮🇳 ഇന്ത്യൻ സ്റ്റോക്കുകളുടെ RSI, RVOL, Price Action സ്കാൻ ചെയ്യുന്നു...")
@@ -145,7 +147,8 @@ def fetch_indian_market():
     🎨 HTML ലേഔട്ട് നിർദ്ദേശങ്ങൾ:
     - ഭാഷ: മലയാളം (സാങ്കേതിക പദങ്ങളായ Entry, Target 3-5%, SL എന്നിവ വ്യക്തമായി നൽകുക).
     - Modern Dark Theme Header, Clean Responsive Cards, Green & Gold Badges.
-    - **സെക്ഷൻ 1:** 🎯 **ടോപ്പ് 1-വീക്ക് സ്വിംഗ് പിക്കുകൾ (Target: 3% - 5% Profit in 3-5 Days)** - (കമ്പനി, Entry Zone, Target Price, Stop Loss, RSI & Volume കാരണം).
+    - **സെക്ഷൻ 1:** 🎯 **ടോപ്പ് 1-വീക്ക് സ്വിംഗ് പിക്കുകൾ (Target: 3% - 5% Profit in 3-5 Days)**: 
+      ഏറ്റവും ഉയർന്ന വിജയസാധ്യതയുള്ളത് (Highest Probability) ഒന്നാമതായി വരുന്ന രീതിയിൽ റാങ്ക് ചെയ്ത് **കുറഞ്ഞത് 5 സ്റ്റോക്കുകൾ (At least 5 stocks)** ലിസ്റ്റ് ചെയ്യുക. (കമ്പനി, Entry Zone, Target Price, Stop Loss, RSI & Volume കാരണം എന്നിവ ഉൾപ്പെടുത്തുക).
     - **സെക്ഷൻ 2:** ⚡ **ഹൈ വോളിയം & RSI മൊമെന്റം ബ്രേക്ക്ഔട്ടുകൾ**.
     - **സെക്ഷൻ 3:** 🛡️ **സ്വിംഗ് ട്രേഡിംഗ് സ്ട്രാറ്റജിയും റിസ്ക് മാനേജ്മെന്റും**.
 
@@ -160,9 +163,11 @@ def fetch_indian_market():
 
 # ==================== 6. US MARKET SCANNER (6:00 PM IST) ====================
 def fetch_us_market():
+    # കൂടുതൽ US മൊമെന്റം സ്റ്റോക്കുകൾ
     us_tickers = [
         "NVDA", "AAPL", "MSFT", "TSLA", "AMZN", "GOOGL", "META", "AMD",
-        "NFLX", "PLTR", "AVGO", "SMCI", "COIN", "MARA", "QCOM", "ARM"
+        "NFLX", "PLTR", "AVGO", "SMCI", "COIN", "MARA", "QCOM", "ARM",
+        "UBER", "CRWD", "PYPL", "INTC", "DIS", "CRM"
     ]
     
     print("🇺🇸 യുഎസ് സ്റ്റോക്കുകളുടെ RSI, RVOL, Price Action സ്കാൻ ചെയ്യുന്നു...")
@@ -185,7 +190,8 @@ def fetch_us_market():
     🎨 HTML ലേഔട്ട് നിർദ്ദേശങ്ങൾ:
     - ഭാഷ: മലയാളം (Tickers, Entry, Target 3-5%, Stop Loss എന്നിവ കൃത്യമായി നൽകുക).
     - Modern Responsive CSS, Dark Header, Blue & Green Badges.
-    - **സെക്ഷൻ 1:** 🇺🇸 **ടോപ്പ് യുഎസ് സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (3% - 5% Profit in 3-5 Days)**.
+    - **സെക്ഷൻ 1:** 🇺🇸 **ടോപ്പ് യുഎസ് സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (3% - 5% Profit in 3-5 Days)**:
+      ഏറ്റവും ഉയർന്ന വിജയസാധ്യതയുള്ളത് (Highest Probability) ഒന്നാമതായി വരുന്ന രീതിയിൽ ഓർഡർ ചെയ്ത് **കുറഞ്ഞത് 5 സ്റ്റോക്കുകൾ (At least 5 stocks)** എങ്കിലും ലിസ്റ്റ് ചെയ്യുക.
     - **സെക്ഷൻ 2:** ⚡ **RSI & Relative Volume (RVOL) ബ്രേക്ക്ഔട്ടുകൾ**.
     - **സെക്ഷൻ 3:** ⚠️ **Wall Street ഓപ്പണിംഗ് ലെവലുകൾ & മുന്നറിയിപ്പുകൾ**.
 
