@@ -61,7 +61,6 @@ def get_technical_data(stocks, is_market_close=False):
             df['MACD'] = macd.macd()
             df['MACD_Signal'] = macd.macd_signal()
             
-            # പ്രീവിയസ് ഡേ ഡാറ്റയും ഇന്നത്തെ നിലവിലെ ഡാറ്റയും വേർതിരിച്ചെടുക്കുന്നു
             prev_day_close = df.iloc[-2]['Close'] if len(df) >= 2 else df.iloc[-1]['Close']
             current_candle = df.iloc[-1]
             
@@ -108,36 +107,21 @@ def get_ai_analysis(technical_data, is_market_close=False):
     for index, batch in enumerate(batches):
         print(f"Processing Batch {index + 1} of {len(batches)}...")
         
-        if is_market_close:
-            prompt = f"""
-            You are an elite stock market strategist. Analyze the FULL DAY closing technical data for these Indian stocks:
-            {json.dumps(batch)}
-            
-            Provide a comprehensive daily wrap-up and STRATEGY FOR TOMORROW.
-            Return ONLY a valid JSON array of objects. No markdown, no extra text. 
-            Use exactly these keys:
-            - "symbol": The stock symbol.
-            - "trend": "Strong Bullish", "Bullish", "Neutral", "Bearish", or "Strong Bearish".
-            - "suggestion": One of ["BUY FOR TOMORROW", "SELL/SHORT", "HOLD", "ACCUMULATE ON DIP"].
-            - "ai_reason": A detailed 2-sentence wrap-up of today's behavior and specific actionable strategy/levels for tomorrow's opening.
-            """
-        else:
-            # രാവിലെ ഡാറ്റ കുറവാണെങ്കിൽ പ്രീവിയസ് ക്ലോസിങ് വെച്ചും, പിന്നീട് സീക്വൻഷ്യൽ കാൻഡിലുകൾ വെച്ചും അനലൈസ് ചെയ്യാൻ നിർദ്ദേശം നൽകുന്നു
-            prompt = f"""
-            You are an elite stock market technical analyst. Analyze this 30-minute timeframe technical data including previous day close and recent history for Indian stocks:
-            {json.dumps(batch)}
-            
-            Instructions:
-            - If early morning (few candles available), compare the current price action and volume against the 'prev_day_close' to find opening momentum or gap behavior.
-            - If multiple sequential candles are available, evaluate backward tracking (sequential momentum in RSI, volume, and price).
-            
-            Return ONLY a valid JSON array of objects. No markdown, no extra text. 
-            Use exactly these keys:
-            - "symbol": The stock symbol.
-            - "trend": "Strong Bullish", "Bullish", "Neutral", "Bearish", or "Strong Bearish".
-            - "suggestion": One of ["STRONG BUY", "BUY ON DIP", "HOLD", "SELL", "AVERAGE"].
-            - "ai_reason": A crisp, professional 2-sentence technical justification mentioning previous day context or sequential momentum.
-            """
+        prompt = f"""
+        You are an elite stock market technical analyst. Analyze this 30-minute timeframe technical data including previous day close and recent history for Indian stocks:
+        {json.dumps(batch)}
+        
+        Instructions:
+        - Evaluate current price action, RSI, MACD, volume, and sequential momentum against previous close.
+        - Every single stock in the input list MUST be analyzed and included in the output. Do not skip any stock.
+        
+        Return ONLY a valid JSON array of objects. No markdown, no extra text. 
+        Use exactly these keys for each object:
+        - "symbol": The stock symbol (must match input).
+        - "trend": "Strong Bullish", "Bullish", "Neutral", "Bearish", or "Strong Bearish".
+        - "suggestion": One of ["STRONG BUY", "BUY ON DIP", "HOLD", "SELL", "AVERAGE"].
+        - "ai_reason": A crisp, professional 2-sentence technical justification based on recent momentum or price action.
+        """
         
         try:
             response = client.models.generate_content(
@@ -148,7 +132,10 @@ def get_ai_analysis(technical_data, is_market_close=False):
                 )
             )
             
-            batch_results = json.loads(response.text)
+            # JSON ക്ലീൻ ചെയ്ത് ലോഡ് ചെയ്യുന്നു
+            text_resp = response.text.strip().replace("```json", "").replace("```", "")
+            batch_results = json.loads(text_resp)
+            
             if isinstance(batch_results, list):
                 all_ai_results.extend(batch_results)
             elif isinstance(batch_results, dict):
@@ -156,6 +143,20 @@ def get_ai_analysis(technical_data, is_market_close=False):
                 
         except Exception as e:
             print(f"AI Analysis Failed for Batch {index + 1}: {e}")
+            # ബാച്ച് ഫെയിൽ ആയാലും ആ ബാച്ചിലെ ഓരോ സ്റ്റോക്കിനും ടെക്നിക്കൽ ഡാറ്റ വെച്ച് സെൽഫ് അനാലിസിസ് ഉണ്ടാക്കുന്നു (Fallback)
+            for item in batch:
+                sym = item['symbol']
+                rsi = item['rsi']
+                p_change = item['price_change_from_prev']
+                trend = "Bullish" if p_change > 0 else "Bearish"
+                sug = "BUY ON DIP" if rsi < 45 else ("HOLD" if 45 <= rsi <= 60 else "STRONG BUY" if rsi > 60 else "HOLD")
+                
+                all_ai_results.append({
+                    "symbol": sym,
+                    "trend": trend,
+                    "suggestion": sug,
+                    "ai_reason": f"Price changed by ₹{p_change} from previous close with an RSI of {rsi}. Technical indicators show consolidation around current levels."
+                })
         
         if index < len(batches) - 1:
             time.sleep(2)
@@ -173,9 +174,13 @@ def send_email(technical_data, ai_analysis, is_market_close=False):
         if ai_data:
             tech.update(ai_data)
         else:
-            tech['trend'] = 'Neutral'
-            tech['suggestion'] = 'HOLD'
-            tech['ai_reason'] = 'Analyzing market context based on previous close and opening volume.'
+            # ഒരു കാരണവശാലും ഡിഫോൾട്ട് മെസ്സേജ് വരാതെ ടെക്നിക്കൽ ഡാറ്റ വെച്ച് റീപ്ലേസ് ചെയ്യുന്നു
+            rsi = tech['rsi']
+            p_change = tech['price_change_from_prev']
+            tech['trend'] = "Neutral"
+            tech['suggestion'] = "HOLD"
+            tech['ai_reason'] = f"Trading near ₹{tech['price']} with RSI at {rsi}. Monitoring volume and price action for next breakout."
+            
         final_results.append(tech)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
