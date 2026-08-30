@@ -10,20 +10,19 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from ta.momentum import RSIIndicator
 from ta.trend import MACD
-import google.generativeai as genai
 
-# GitHub Secrets-ൽ നിന്നുള്ള പഴയ ഡാറ്റകൾ തന്നെ ഉപയോഗിക്കുന്നു
+# പുതിയ ഗൂഗിൾ AI പാക്കേജ്
+from google import genai
+
+# Secrets
 GMAIL_SENDER = os.environ.get("GMAIL_SENDER")
 GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 GMAIL_RECEIVER = os.environ.get("GMAIL_RECEIVER")
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
 
-# നിങ്ങളുടെ ഗൂഗിൾ ഡ്രൈവിലെ ഷീറ്റിന്റെ പേര് ഇവിടെ കൃത്യമായി നൽകുക
-SHEET_NAME = "shares" 
-
-# AI കോൺഫിഗറേഷൻ
-genai.configure(api_key=GEMINI_API_KEY)
+# നിങ്ങളുടെ ഗൂഗിൾ ഷീറ്റിന്റെ URL-ൽ നിന്നുള്ള ID ഇവിടെ നൽകുക (പേരിന് പകരം ഇതാണ് നല്ലത്)
+SHEET_ID = "1Voy-zrWnAbT4ICqThGLZ6tJJJPWYJ0VuFI8nC-BmBqI" 
 
 def get_stocks_from_sheet():
     try:
@@ -31,10 +30,11 @@ def get_stocks_from_sheet():
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
-        sheet = client.open(SHEET_NAME).sheet1
+        
+        # ID ഉപയോഗിച്ച് നേരിട്ട് ഷീറ്റ് തുറക്കുന്നു
+        sheet = client.open_by_key(SHEET_ID).sheet1
         records = sheet.get_all_values()
         
-        # ആദ്യ കോളം സ്റ്റോക്ക് സിംബൽ ആണ് (Header ഒഴിവാക്കുന്നു)
         stocks = [row[0] for row in records[1:] if row[0].strip() != ""]
         return stocks
     except Exception as e:
@@ -45,15 +45,19 @@ def get_technical_data(stocks):
     technical_data = []
     for symbol in stocks:
         try:
-            # യാഹൂ ഫിനാൻസിനായി .NS ചേർക്കുന്നു
             ticker = symbol if symbol.endswith(".NS") or symbol.endswith(".BO") else f"{symbol}.NS"
-            df = yf.download(ticker, period="5d", interval="30m", progress=False)
+            
+            # 1-Dimensional Error ഒഴിവാക്കാൻ Ticker.history() ഉപയോഗിക്കുന്നു
+            stock_data = yf.Ticker(ticker)
+            df = stock_data.history(period="5d", interval="30m")
             
             if df.empty or len(df) < 20:
                 continue
 
-            df['RSI'] = RSIIndicator(close=df['Close'], window=14).rsi()
-            macd = MACD(close=df['Close'])
+            # ഇൻഡിക്കേറ്ററുകൾ കാൽക്കുലേറ്റ് ചെയ്യുന്നു
+            close_series = df['Close'].squeeze()
+            df['RSI'] = RSIIndicator(close=close_series, window=14).rsi()
+            macd = MACD(close=close_series)
             df['MACD'] = macd.macd()
             df['MACD_Signal'] = macd.macd_signal()
             
@@ -84,25 +88,30 @@ def get_ai_analysis(technical_data):
         return []
     
     print("Asking AI for Market Analysis...")
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    prompt = f"""
-    You are an expert intraday and short-term stock market technical analyst.
-    Analyze the following 30-minute timeframe technical data for Indian stocks:
-    {json.dumps(technical_data)}
-    
-    Based on Price action, RSI, MACD, and Volume crossover, provide a detailed analysis for EACH stock.
-    Return the response strictly as a JSON array of objects with the following keys:
-    - symbol: The stock symbol.
-    - trend: "Bullish", "Bearish", or "Neutral".
-    - suggestion: Choose one from ["BUY", "SELL", "HOLD", "BUY ON DIP", "AVERAGE"].
-    - ai_reason: A sharp 2-sentence explanation of WHY this suggestion is given based on the provided technicals (mention RSI/Volume/MACD).
-    
-    Do not output any markdown formatting or extra text, just the raw JSON array.
-    """
-    
     try:
-        response = model.generate_content(prompt)
+        # പുതിയ Gemini API സിന്റാക്സ്
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        
+        prompt = f"""
+        You are an expert intraday and short-term stock market technical analyst.
+        Analyze the following 30-minute timeframe technical data for Indian stocks:
+        {json.dumps(technical_data)}
+        
+        Based on Price action, RSI, MACD, and Volume crossover, provide a detailed analysis for EACH stock.
+        Return the response strictly as a JSON array of objects with the following keys:
+        - symbol: The stock symbol.
+        - trend: "Bullish", "Bearish", or "Neutral".
+        - suggestion: Choose one from ["BUY", "SELL", "HOLD", "BUY ON DIP", "AVERAGE"].
+        - ai_reason: A sharp 2-sentence explanation of WHY this suggestion is given based on the provided technicals (mention RSI/Volume/MACD).
+        
+        Do not output any markdown formatting or extra text, just the raw JSON array.
+        """
+        
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=prompt
+        )
+        
         cleaned_response = response.text.strip().replace('```json', '').replace('```', '')
         ai_results = json.loads(cleaned_response)
         return ai_results
@@ -194,6 +203,7 @@ if __name__ == "__main__":
     stocks = get_stocks_from_sheet()
     
     if not stocks:
+        print("Using Fallback Stocks...")
         stocks = ["RELIANCE", "TCS", "HDFCBANK", "INFY"]
         
     print(f"Calculating Technical Data for {len(stocks)} stocks...")
