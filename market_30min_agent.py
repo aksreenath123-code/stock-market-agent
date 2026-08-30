@@ -83,11 +83,10 @@ def get_ai_analysis(technical_data):
     if not technical_data:
         return []
     
-    print("Asking AI (Gemini 1.5 Flash) for Market Analysis in Batches...")
+    print("Asking AI for Market Analysis in Batches...")
     client = genai.Client(api_key=GEMINI_API_KEY)
     all_ai_results = []
     
-    # 200 സ്റ്റോക്കുകൾ വരെ സപ്പോർട്ട് ചെയ്യാൻ ഒരു ബാച്ചിൽ 25 സ്റ്റോക്കുകൾ വീതം
     batch_size = 25
     batches = [technical_data[i:i + batch_size] for i in range(0, len(technical_data), batch_size)]
     
@@ -110,9 +109,9 @@ def get_ai_analysis(technical_data):
         """
         
         try:
-            # ടൈംഔട്ട് എററുകൾ ഒഴിവാക്കാൻ ഫ്ലാഷ് മോഡൽ ഉപയോഗിക്കുന്നു
+            # മോഡൽ നെയിം ശരിയായ രീതിയിൽ (gemini-2.5-flash അല്ലെങ്കിൽ gemini-1.5-flash) നൽകിയിരിക്കുന്നു
             response = client.models.generate_content(
-                model='gemini-1.5-flash',
+                model='gemini-2.5-flash',
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -129,7 +128,6 @@ def get_ai_analysis(technical_data):
         except Exception as e:
             print(f"AI Analysis Failed for Batch {index + 1}: {e}")
         
-        # ബാച്ചുകൾക്കിടയിൽ ചെറിയൊരു ഗ്യാപ്പ്
         if index < len(batches) - 1:
             time.sleep(2)
             
@@ -200,7 +198,7 @@ def send_email(technical_data, ai_analysis):
             </tr>
         """
     
-    html += "</table><br><p style='font-size: 12px; color: #999;'>Happy Trading! - <i>Powered by Gemini 1.5 Flash & Market Agent Pro</i></p></body></html>"
+    html += "</table><br><p style='font-size: 12px; color: #999;'>Happy Trading! - <i>Powered by Gemini Flash & Market Agent Pro</i></p></body></html>"
 
     msg = MIMEMultipart()
     msg['From'] = GMAIL_SENDER
