@@ -25,10 +25,13 @@ jobs:
 
       - name: Run AI 30-Min Market Agent Script
         env:
-          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
-          # പഴയ സീക്രട്ടിന്റെ പേരായ GMAIL_PASSWORD ഉപയോഗിച്ച് മാറ്റിയിട്ടുണ്ട് 👇
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_PASSWORD }} 
-          GMAIL_RECEIVER: ${{ secrets.GMAIL_RECEIVER }}
+
+         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GMAIL_SENDER: ${{ secrets.SENDER_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+           GMAIL_RECEIVER: ${{ secrets.RECEIVER_EMAIL }}
+
+
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        
         run: python market_30min_agent.py
