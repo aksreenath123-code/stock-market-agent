@@ -1,35 +1,58 @@
 
-name: Daily Stock Market Agent
+name: Dual Market Swing Trading Agent
 
 on:
   schedule:
-    # തിങ്കൾ മുതൽ വെള്ളി വരെ വൈകുന്നേരം 4:30 PM IST (11:00 AM UTC)
-    - cron: '0 11 * * 1-5'
+    # 1. ഇന്ത്യൻ മാർക്കറ്റ്: 8:00 AM IST (Mon-Fri) -> UTC 02:30 AM
+    - cron: '30 2 * * 1-5'
+    
+    # 2. യുഎസ് മാർക്കറ്റ്: 6:00 PM IST (Mon-Fri) -> UTC 12:30 PM
+    - cron: '30 12 * * 1-5'
+    
   workflow_dispatch:
+    inputs:
+      market:
+        description: 'ഏത് മാർക്കറ്റാണ് റൺ ചെയ്യേണ്ടത്?'
+        required: true
+        default: 'indian'
+        type: choice
+        options:
+          - indian
+          - us
 
 jobs:
   run-market-agent:
     runs-on: ubuntu-latest
 
     steps:
-      - name: കോഡ് ഡൗൺലോഡ് ചെയ്യുന്നു
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: പൈത്തൺ സെറ്റപ്പ് ചെയ്യുന്നു
+      - name: സെറ്റപ്പ് പൈത്തൺ
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: ലൈബ്രറികൾ ഇൻസ്റ്റാൾ ചെയ്യുന്നു
+      - name: ഇൻസ്റ്റാൾ ലൈബ്രറികൾ
         run: |
-          python -m pip install --upgrade pip
-          pip install requests feedparser google-genai nsepython
+          pip install requests feedparser google-genai nsepython yfinance beautifulsoup4
 
-      - name: സ്ക്രിപ്റ്റ് റൺ ചെയ്യുന്നു
+      # UTC സമയം അനുസരിച്ച് ഓട്ടോമാറ്റിക്കായി മാർക്കറ്റ് തിരഞ്ഞെടുക്കുന്നു
+      - name: ഇന്ത്യൻ മാർക്കറ്റ് റൺ ചെയ്യുന്നു (8:00 AM IST)
+        if: github.event.schedule == '30 2 * * 1-5' || github.event.inputs.market == 'indian'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
-        run: python market_agent_pro.py
+          MONEYCONTROL_COOKIE: ${{ secrets.MONEYCONTROL_COOKIE }}
+        run: python multi_market_agent.py indian
+
+      - name: യുഎസ് മാർക്കറ്റ് റൺ ചെയ്യുന്നു (6:00 PM IST)
+        if: github.event.schedule == '30 12 * * 1-5' || github.event.inputs.market == 'us'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+        run: python multi_market_agent.py us
