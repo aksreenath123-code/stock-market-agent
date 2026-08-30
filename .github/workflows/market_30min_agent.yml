@@ -12,8 +12,8 @@ on:
     - cron: '45 7 * * 1-5'
     - cron: '45 8 * * 1-5'
 
-    # 3. മാർക്കറ്റ് ക്ലോസിങ് ഡെയ്‌ലി സമ്മറി (3:35 PM IST = 10:05 UTC)
-    - cron: '5 10 * * 1-5'
+    # 3. രാത്രി 8:30 PM IST-ക്ക് (15:00 UTC) ഡെയ്‌ലി കൺസോളിഡേറ്റഡ് & മണി കൺട്രോൾ പ്രോ റിപ്പോർട്ട്
+    - cron: '0 15 * * 1-5'
 
   workflow_dispatch:
 
@@ -33,13 +33,14 @@ jobs:
       - name: Install All Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yfinance pandas ta gspread oauth2client google-genai
+          pip install yfinance pandas ta gspread oauth2client google-genai beautifulsoup4 requests
 
-      - name: Run AI 30-Min Market Agent Script
+      - name: Run AI Market Agent Script
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GMAIL_SENDER: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           GMAIL_RECEIVER: ${{ secrets.RECEIVER_EMAIL }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
+          MONEYCONTROL_COOKIE: ${{ secrets.MONEYCONTROL_COOKIE }} # മണി കൺട്രോൾ പ്രോ കുക്കി ഇവിടെ ചേർത്തിരിക്കുന്നു
         run: python market_30min_agent.py
