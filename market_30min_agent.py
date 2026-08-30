@@ -1,6 +1,7 @@
 import os
 import json
 import smtplib
+import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -11,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from ta.momentum import RSIIndicator
 from ta.trend import MACD
 from google import genai
-from google.genai import types # JSON ഔട്ട്പുട്ട് ഉറപ്പാക്കാൻ
+from google.genai import types
 
 # Secrets
 GMAIL_SENDER = os.environ.get("GMAIL_SENDER")
@@ -82,14 +83,20 @@ def get_ai_analysis(technical_data):
     if not technical_data:
         return []
     
-    print("Asking AI (Gemini Pro) for Market Analysis...")
-    try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+    print("Asking AI (Gemini 1.5 PRO) for Market Analysis in Batches...")
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    all_ai_results = []
+    
+    # 200 സ്റ്റോക്കുകൾ സപ്പോർട്ട് ചെയ്യാൻ ഒരു ബാച്ചിൽ 25 സ്റ്റോക്കുകൾ വീതം ആക്കി
+    batch_size = 25
+    batches = [technical_data[i:i + batch_size] for i in range(0, len(technical_data), batch_size)]
+    
+    for index, batch in enumerate(batches):
+        print(f"Processing Batch {index + 1} of {len(batches)}...")
         
-        # കൂടുതൽ പ്രൊഫഷണൽ ആയ പ്രോംപ്റ്റ്
         prompt = f"""
         You are an elite stock market technical analyst. Analyze this 30-minute timeframe technical data for Indian stocks:
-        {json.dumps(technical_data)}
+        {json.dumps(batch)}
         
         Evaluate Price Action, RSI (oversold/overbought), MACD crossovers, and Volume spikes. 
         Provide a highly accurate trading suggestion for each stock.
@@ -99,24 +106,35 @@ def get_ai_analysis(technical_data):
         - "symbol": The stock symbol.
         - "trend": "Strong Bullish", "Bullish", "Neutral", "Bearish", or "Strong Bearish".
         - "suggestion": One of ["STRONG BUY", "BUY ON DIP", "HOLD", "SELL", "AVERAGE"].
-        - "ai_reason": A crisp, professional 2-sentence technical justification (e.g., "RSI is at 28 indicating oversold, combined with a bullish MACD crossover. Good risk-reward for a quick swing.").
+        - "ai_reason": A crisp, professional 2-sentence technical justification.
         """
         
-        # നിർബന്ധമായും JSON ഔട്ട്പുട്ട് വരാനും, Gemini 1.5 Pro ഉപയോഗിക്കാനും കോൺഫിഗർ ചെയ്യുന്നു
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
+        try:
+            # Gemini 1.5 PRO മോഡൽ ഉപയോഗിക്കുന്നു
+            response = client.models.generate_content(
+                model='gemini-1.5-pro',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                )
             )
-        )
+            
+            batch_results = json.loads(response.text)
+            
+            if isinstance(batch_results, list):
+                all_ai_results.extend(batch_results)
+            elif isinstance(batch_results, dict):
+                all_ai_results.append(batch_results)
+                
+        except Exception as e:
+            print(f"AI Analysis Failed for Batch {index + 1}: {e}")
         
-        # പ്യുവർ JSON ആയതുകൊണ്ട് നേരെ ലോഡ് ചെയ്യാം
-        ai_results = json.loads(response.text)
-        return ai_results
-    except Exception as e:
-        print(f"AI Analysis Failed: {e}")
-        return []
+        # ഗൂഗിൾ ഫ്രീ API-യുടെ 2 RPM ലിമിറ്റ് മറികടക്കാൻ 35 സെക്കൻഡ് വിശ്രമിക്കുന്നു
+        if index < len(batches) - 1:
+            print("Waiting 35 seconds to respect Gemini API Rate Limits...")
+            time.sleep(35)
+            
+    return all_ai_results
 
 def send_email(technical_data, ai_analysis):
     if not technical_data:
@@ -131,7 +149,7 @@ def send_email(technical_data, ai_analysis):
         else:
             tech['trend'] = 'N/A'
             tech['suggestion'] = 'HOLD'
-            tech['ai_reason'] = 'AI Analysis unavailable due to API timeout.'
+            tech['ai_reason'] = 'AI Analysis unavailable due to API rate limit timeout.'
         final_results.append(tech)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -183,7 +201,7 @@ def send_email(technical_data, ai_analysis):
             </tr>
         """
     
-    html += "</table><br><p style='font-size: 12px; color: #999;'>Happy Trading! - <i>Powered by Gemini 1.5 Pro & Market Agent Pro</i></p></body></html>"
+    html += "</table><br><p style='font-size: 12px; color: #999;'>Happy Trading! - <i>Powered by Gemini 1.5 PRO & Market Agent Pro</i></p></body></html>"
 
     msg = MIMEMultipart()
     msg['From'] = GMAIL_SENDER
