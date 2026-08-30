@@ -104,7 +104,7 @@ def get_ai_analysis(technical_data):
         
         # നിർബന്ധമായും JSON ഔട്ട്പുട്ട് വരാനും, Gemini 1.5 Pro ഉപയോഗിക്കാനും കോൺഫിഗർ ചെയ്യുന്നു
         response = client.models.generate_content(
-            model='gemini-1.5-pro',
+            model='gemini-1.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
