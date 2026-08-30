@@ -25,13 +25,9 @@ jobs:
 
       - name: Run AI 30-Min Market Agent Script
         env:
-
-         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GMAIL_SENDER: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-           GMAIL_RECEIVER: ${{ secrets.RECEIVER_EMAIL }}
-
-
+          GMAIL_RECEIVER: ${{ secrets.RECEIVER_EMAIL }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
-        
         run: python market_30min_agent.py
