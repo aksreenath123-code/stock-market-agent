@@ -13,13 +13,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Python 3.11 ലേക്ക് മാറ്റി
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # google-generativeai എന്നതിന് പകരം പുതിയ google-genai ഇൻസ്റ്റാൾ ചെയ്യുന്നു
       - name: Install All Dependencies
         run: |
           python -m pip install --upgrade pip
@@ -28,7 +26,8 @@ jobs:
       - name: Run AI 30-Min Market Agent Script
         env:
           GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          # പഴയ സീക്രട്ടിന്റെ പേരായ GMAIL_PASSWORD ഉപയോഗിച്ച് മാറ്റിയിട്ടുണ്ട് 👇
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_PASSWORD }} 
           GMAIL_RECEIVER: ${{ secrets.GMAIL_RECEIVER }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
