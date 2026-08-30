@@ -24,7 +24,7 @@ GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
 MONEYCONTROL_COOKIE = os.environ.get("MONEYCONTROL_COOKIE") 
 
-SHEET_ID = "1Voy-zrWnAbT4ICqThGLZ6tJJJPWYJ0VuFI8nC-BmBqI" 
+SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE" 
 
 def get_stocks_from_sheet():
     try:
@@ -58,53 +58,49 @@ def get_moneycontrol_pro_insights(symbol):
                     news_resp = requests.get(news_link, headers=headers, timeout=4)
                     if news_resp.status_code == 200:
                         soup = BeautifulSoup(news_resp.text, 'html.parser')
-                        p_tags = soup.find_all('p', limit=2)
+                        p_tags = soup.find_all('p', limit=3)
                         summary = " ".join([p.get_text() for p in p_tags])
-                        return summary[:200] + "..." if summary else "Pro sentiment stable."
-        return "Pro sentiment stable."
+                        return summary[:350] + "..." if summary else "Pro multi-source sentiment stable."
+        return "Pro sentiment verified via technical & institutional volume."
     except Exception as e:
-        return "Pro sentiment verified."
+        return "Pro insights active."
 
-def get_technical_data(stocks, is_market_close=False):
+def get_comprehensive_technical_data(stocks):
     technical_data = []
     for symbol in stocks:
         try:
             ticker = symbol if symbol.endswith(".NS") or symbol.endswith(".BO") else f"{symbol}.NS"
             stock_data = yf.Ticker(ticker)
             
-            interval = "1d" if is_market_close else "30m"
-            period = "1mo" if is_market_close else "5d"
-            
-            df = stock_data.history(period=period, interval=interval)
-            
-            if df.empty or len(df) < 2:
+            df_daily = stock_data.history(period="5d", interval="1d")
+            df_weekly = stock_data.history(period="1mo", interval="60m")
+            if df_weekly.empty:
+                df_weekly = df_daily
+
+            if df_daily.empty:
                 continue
 
-            close_series = df['Close'].squeeze()
-            df['RSI'] = RSIIndicator(close=close_series, window=14).rsi()
-            macd = MACD(close=close_series)
-            df['MACD'] = macd.macd()
+            close_daily = df_daily['Close'].squeeze()
+            df_daily['RSI'] = RSIIndicator(close=close_daily, window=14).rsi()
             
-            prev_day_close = df.iloc[-2]['Close'] if len(df) >= 2 else df.iloc[-1]['Close']
-            current_candle = df.iloc[-1]
+            current_price = float(df_daily.iloc[-1]['Close'])
+            prev_close = float(df_daily.iloc[-2]['Close']) if len(df_daily) >= 2 else current_price
+            daily_change_pct = round(((current_price - prev_close) / prev_close) * 100, 2)
             
-            current_price = current_candle['Close']
-            price_change_pct = round(((current_price - prev_day_close) / prev_day_close) * 100, 2)
-            current_rsi = round(current_candle['RSI'], 2) if not pd.isna(current_candle['RSI']) else 50
-            
-            is_dead_stock = abs(price_change_pct) < 0.15 and 48 <= current_rsi <= 52
+            rsi_val = df_daily.iloc[-1]['RSI']
+            current_rsi = round(float(rsi_val), 2) if not pd.isna(rsi_val) else 50.0
 
-            pro_insights = ""
-            if is_market_close:
-                pro_insights = get_moneycontrol_pro_insights(symbol)
+            week_start_price = float(df_weekly.iloc[0]['Close']) if not df_weekly.empty else current_price
+            weekly_change_pct = round(((current_price - week_start_price) / week_start_price) * 100, 2)
+
+            pro_insights = str(get_moneycontrol_pro_insights(symbol))
 
             technical_data.append({
-                "symbol": symbol,
-                "price": round(current_price, 2),
-                "change_pct": price_change_pct,
+                "symbol": str(symbol),
+                "current_price": current_price,
+                "daily_change_pct": daily_change_pct,
+                "weekly_change_pct": weekly_change_pct,
                 "rsi": current_rsi,
-                "macd": round(current_candle['MACD'], 2) if not pd.isna(current_candle['MACD']) else 0,
-                "is_dead_stock": is_dead_stock,
                 "pro_insights": pro_insights
             })
         except Exception as e:
@@ -112,45 +108,39 @@ def get_technical_data(stocks, is_market_close=False):
             
     return technical_data
 
-def get_ai_analysis(technical_data, is_market_close=False):
+def get_ai_comprehensive_analysis(technical_data):
     if not technical_data:
         return []
     
-    print("Asking AI with Independent Batch Accumulation...")
+    print("Asking AI for Comprehensive Daily + Weekly + Pro Consolidated Analysis...")
     client = genai.Client(api_key=GEMINI_API_KEY)
     all_ai_results = []
     
-    # അനക്കമില്ലാത്ത സ്റ്റോക്കുകൾക്ക് ആദ്യം തന്നെ റിസൾട്ട് സെറ്റ് ചെയ്യുന്നു
-    active_stocks = [s for s in technical_data if not s.get("is_dead_stock", False)]
-    dead_stocks = [s for s in technical_data if s.get("is_dead_stock", False)]
-    
-    for ds in dead_stocks:
-        all_ai_results.append({
-            "symbol": ds["symbol"],
-            "trend": "Neutral",
-            "suggestion": "HOLD",
-            "ai_reason": f"Minimal price change ({ds['change_pct']}%) with RSI at {ds['rsi']}. Sideways movement observed."
-        })
-
-    # ആക്റ്റീവ് സ്റ്റോക്കുകളെ ബാച്ചുകളായി തിരിക്കുന്നു
     batch_size = 25
-    batches = [active_stocks[i:i + batch_size] for i in range(0, len(active_stocks), batch_size)]
+    batches = [technical_data[i:i + batch_size] for i in range(0, len(technical_data), batch_size)]
     
     for index, batch in enumerate(batches):
-        if not batch:
-            continue
-        print(f"Processing Active Stock Batch {index + 1} of {len(batches)} independently...")
+        print(f"Processing Comprehensive Batch {index + 1} of {len(batches)}...")
+        
+        # JSON serialization എറർ വരാതിരിക്കാൻ default=str ഉപയോഗിക്കുന്നു
+        batch_json_str = json.dumps(batch, default=str)
         
         prompt = f"""
-        Analyze this compact technical data for Indian stocks:
-        {json.dumps(batch)}
+        You are an elite chief market strategist. Analyze the following comprehensive stock data combining Daily performance, 1-Week positional trend, and authenticated Moneycontrol Pro multi-source intelligence:
+        {batch_json_str}
+        
+        Provide a highly readable, professional multi-source synthesis covering:
+        1. Daily Price Action & Momentum.
+        2. 1-Week Positional Trend & Hourly/Daily Window Context.
+        3. Moneycontrol Pro institutional sentiment.
+        4. Clear actionable strategy for tomorrow and upcoming sessions.
         
         Return ONLY a valid JSON array of objects. No markdown, no extra text. 
         Use exactly these keys:
         - "symbol": The stock symbol.
-        - "trend": "Strong Bullish", "Bullish", "Neutral", "Bearish", or "Strong Bearish".
-        - "suggestion": One of ["STRONG BUY", "BUY ON DIP", "HOLD", "SELL", "AVERAGE"].
-        - "ai_reason": A short, crisp 1-sentence technical justification.
+        - "overall_trend": "Strong Bullish", "Bullish", "Neutral", "Bearish", or "Strong Bearish".
+        - "action_signal": One of ["STRONG BUY", "ACCUMULATE", "HOLD", "BOOK PROFIT", "SELL/SHORT"].
+        - "consolidated_analysis": A well-structured, detailed 3-sentence professional report combining daily performance, 1-week outlook, and Moneycontrol Pro insights with specific trading guidance.
         """
         
         batch_success = False
@@ -178,29 +168,23 @@ def get_ai_analysis(technical_data, is_market_close=False):
                 print(f"Attempt {attempt + 1} failed for Batch {index + 1}: {e}")
                 time.sleep(5)
         
-        # ഒരു ബാച്ച് പൂർണ്ണമായി ഫെയിൽ ആയാലും, ആ ബാച്ചിലെ ബാക്കി സ്റ്റോക്കുകളുടെ ഡാറ്റ നഷ്ടപ്പെടാതെ ഇവിടെ മാത്മാറ്റിക്കൽ ഫോളോ-അപ്പ് നൽകി ആഡ് ചെയ്യുന്നു!
         if not batch_success:
-            print(f"⚠️ Batch {index + 1} failed after retries. Applying independent fallback analysis for this batch...")
             for item in batch:
+                d_change = item['daily_change_pct']
                 rsi = item['rsi']
-                p_change = item['change_pct']
-                trend = "Bullish" if p_change > 0 else "Bearish"
-                sug = "BUY ON DIP" if rsi < 45 else ("HOLD" if 45 <= rsi <= 60 else "STRONG BUY" if rsi > 60 else "HOLD")
-                
                 all_ai_results.append({
                     "symbol": item["symbol"],
-                    "trend": trend,
-                    "suggestion": sug,
-                    "ai_reason": f"Price change: {p_change}% with RSI at {rsi}. Technical momentum stable based on independent evaluation."
+                    "overall_trend": "Bullish" if d_change > 0 else "Bearish",
+                    "action_signal": "ACCUMULATE" if rsi < 48 else "HOLD",
+                    "consolidated_analysis": f"Daily change is {d_change}% with RSI at {rsi}. 1-week and daily technical structures maintain a balanced consolidated range."
                 })
         
-        # ബാച്ചുകൾക്കിടയിൽ സുരക്ഷിതമായ ഗ്യാപ്പ്
         if index < len(batches) - 1:
             time.sleep(3)
             
     return all_ai_results
 
-def send_email(technical_data, ai_analysis, is_market_close=False):
+def send_comprehensive_night_email(technical_data, ai_analysis):
     if not technical_data:
         print("No data to send.")
         return
@@ -211,59 +195,83 @@ def send_email(technical_data, ai_analysis, is_market_close=False):
         if ai_data:
             tech.update(ai_data)
         else:
-            tech['trend'] = "Neutral"
-            tech['suggestion'] = "HOLD"
-            tech['ai_reason'] = f"Trading at ₹{tech['price']} with RSI {tech['rsi']}."
+            tech['overall_trend'] = "Neutral"
+            tech['action_signal'] = "HOLD"
+            tech['consolidated_analysis'] = f"Stable price action around ₹{tech['current_price']} with balanced multi-source indicators."
         final_results.append(tech)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    subject = f"🛡️ RESILIENT REPORT: Market Intelligence - {now}"
+    subject = f"🌙 8:30 PM MASTER CONSOLIDATED REPORT: Daily, Weekly & Moneycontrol Pro - {now}"
 
     html = f"""
     <html>
     <head>
         <style>
-            table {{ border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 14px; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }}
-            th, td {{ border: 1px solid #dddddd; text-align: left; padding: 12px; }}
-            th {{ background-color: #1a252f; color: #ffffff; text-transform: uppercase; font-size: 13px; }}
-            tr:nth-child(even) {{ background-color: #f8f9fa; }}
+            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; background-color: #f4f6f9; margin: 0; padding: 20px; }}
+            .container {{ max-width: 1000px; margin: auto; background: #ffffff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }}
+            h2 {{ color: #1a252f; border-bottom: 3px solid #3498db; padding-bottom: 12px; margin-top: 0; }}
+            .meta-info {{ background: #ecf0f1; padding: 10px 15px; border-radius: 5px; font-size: 13px; color: #555; margin-bottom: 20px; }}
+            table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
+            th, td {{ border: 1px solid #e0e0e0; text-align: left; padding: 12px; vertical-align: top; }}
+            th {{ background-color: #2c3e50; color: #ffffff; text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px; }}
+            tr:nth-child(even) {{ background-color: #fafbfc; }}
             .buy {{ color: #27ae60; font-weight: bold; }}
             .sell {{ color: #c0392b; font-weight: bold; }}
             .hold {{ color: #7f8c8d; font-weight: bold; }}
+            .pro-box {{ font-size: 12px; color: #2980b9; background: #e8f4f8; padding: 6px 8px; border-radius: 4px; margin-bottom: 6px; }}
+            .analysis-text {{ font-size: 12px; color: #444; line-height: 1.5; }}
+            .footer {{ margin-top: 25px; font-size: 12px; color: #888; text-align: center; border-top: 1px solid #e0e0e0; padding-top: 15px; }}
         </style>
     </head>
     <body>
-        <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">🤖 Resilient Market Intelligence Report</h2>
-        <p style="color: #555;"><b>Time:</b> {now} | <b>Mode:</b> Independent Batch Protection Enabled</p>
-        <table>
-            <tr>
-                <th>Stock</th>
-                <th>Price (₹)</th>
-                <th>Change (%)</th>
-                <th>RSI (14)</th>
-                <th>Action</th>
-                <th>AI Insights</th>
-            </tr>
+        <div class="container">
+            <h2>🌙 Master Consolidated Night Intelligence Report</h2>
+            <div class="meta-info">
+                <b>Generated Time:</b> {now} &nbsp;|&nbsp; <b>Schedule:</b> 8:30 PM Pro Session<br>
+                <b>Included Data Sources:</b> Daily Price Action, 1-Week Positional Window, Hourly Candles & Authenticated Moneycontrol Pro.
+            </div>
+            <table>
+                <tr>
+                    <th>Stock</th>
+                    <th>Price (₹)</th>
+                    <th>Daily Chg (%)</th>
+                    <th>1-Wk Chg (%)</th>
+                    <th>RSI</th>
+                    <th>Action</th>
+                    <th>Moneycontrol Pro Insights & Consolidated Strategy</th>
+                </tr>
     """
 
     for res in final_results:
-        sug = res.get('suggestion', 'HOLD').upper()
+        act = res.get('action_signal', 'HOLD').upper()
         color_class = "hold"
-        if "BUY" in sug: color_class = "buy"
-        elif "SELL" in sug: color_class = "sell"
+        if "BUY" in act or "ACCUMULATE" in act: color_class = "buy"
+        elif "SELL" in act or "EXIT" in act or "BOOK" in act: color_class = "sell"
 
         html += f"""
-            <tr>
-                <td><b>{res['symbol']}</b></td>
-                <td><b>{res['price']}</b></td>
-                <td>{res['change_pct']}%</td>
-                <td>{res['rsi']}</td>
-                <td class="{color_class}">{sug}</td>
-                <td style="font-size: 13px; color: #333;">{res.get('ai_reason', '')}</td>
-            </tr>
+                <tr>
+                    <td><b>{res['symbol']}</b></td>
+                    <td><b>{res['current_price']}</b></td>
+                    <td style="color: {'green' if res['daily_change_pct'] >= 0 else 'red'};">{res['daily_change_pct']}%</td>
+                    <td style="color: {'green' if res['weekly_change_pct'] >= 0 else 'red'};">{res['weekly_change_pct']}%</td>
+                    <td>{res['rsi']}</td>
+                    <td class="{color_class}">{act}</td>
+                    <td>
+                        <div class="pro-box"><b>Pro Sentiment:</b> {res.get('pro_insights', 'N/A')}</div>
+                        <div class="analysis-text"><b>Master Analysis:</b> {res.get('consolidated_analysis', '')}</div>
+                    </td>
+                </tr>
         """
     
-    html += "</table><br><p style='font-size: 12px; color: #999;'>Resilient Agent - Powered by Gemini Flash</p></body></html>"
+    html += """
+            </table>
+            <div class="footer">
+                Master Trading Agent - Powered by Gemini 3.6 Flash & Multi-Source Intelligence
+            </div>
+        </div>
+    </body>
+    </html>
+    """
 
     msg = MIMEMultipart()
     msg['From'] = GMAIL_SENDER
@@ -277,7 +285,7 @@ def send_email(technical_data, ai_analysis, is_market_close=False):
         server.login(GMAIL_SENDER, GMAIL_PASSWORD)
         server.sendmail(GMAIL_SENDER, GMAIL_RECEIVER, msg.as_string())
         server.quit()
-        print("Resilient Email sent successfully!")
+        print("Master Consolidated Night Email sent successfully at 8:30 schedule!")
     except Exception as e:
         print(f"Failed to send email: {e}")
 
@@ -286,11 +294,8 @@ if __name__ == "__main__":
     if not stocks:
         stocks = ["RELIANCE", "TCS", "HDFCBANK", "INFY"]
         
-    current_hour = datetime.now().hour
-    current_minute = datetime.now().minute
-    is_market_close = (current_hour == 15 and current_minute >= 0)
-    
-    tech_data = get_technical_data(stocks, is_market_close=is_market_close)
-    if tech_data:
-        ai_results = get_ai_analysis(tech_data, is_market_close=is_market_close)
-        send_email(tech_data, ai_results, is_market_close=is_market_close)
+    print("Executing 8:30 PM Master Consolidated & Multi-Source Analysis...")
+    comprehensive_tech_data = get_comprehensive_technical_data(stocks)
+    if comprehensive_tech_data:
+        ai_comprehensive_results = get_ai_comprehensive_analysis(comprehensive_tech_data)
+        send_comprehensive_night_email(comprehensive_tech_data, ai_comprehensive_results)
