@@ -47,13 +47,12 @@ def get_technical_data(stocks, is_market_close=False):
             ticker = symbol if symbol.endswith(".NS") or symbol.endswith(".BO") else f"{symbol}.NS"
             stock_data = yf.Ticker(ticker)
             
-            # മാർക്കറ്റ് ക്ലോസിങ് ആണെങ്കിൽ മുഴുവൻ ദിവസത്തെ (1d interval) ഡാറ്റയും, അല്ലെങ്കിൽ 30m ഡാറ്റയും എടുക്കുന്നു
             interval = "1d" if is_market_close else "30m"
             period = "1mo" if is_market_close else "5d"
             
             df = stock_data.history(period=period, interval=interval)
             
-            if df.empty or len(df) < 5:
+            if df.empty or len(df) < 2:
                 continue
 
             close_series = df['Close'].squeeze()
@@ -61,6 +60,10 @@ def get_technical_data(stocks, is_market_close=False):
             macd = MACD(close=close_series)
             df['MACD'] = macd.macd()
             df['MACD_Signal'] = macd.macd_signal()
+            
+            # പ്രീവിയസ് ഡേ ഡാറ്റയും ഇന്നത്തെ നിലവിലെ ഡാറ്റയും വേർതിരിച്ചെടുക്കുന്നു
+            prev_day_close = df.iloc[-2]['Close'] if len(df) >= 2 else df.iloc[-1]['Close']
+            current_candle = df.iloc[-1]
             
             candle_history = []
             for idx, row in df.tail(5).iterrows():
@@ -71,22 +74,20 @@ def get_technical_data(stocks, is_market_close=False):
                     "rsi": round(row['RSI'], 2) if not pd.isna(row['RSI']) else 50
                 })
 
-            current_candle = df.iloc[-1]
-            prev_candle = df.iloc[-2]
-            
             current_price = current_candle['Close']
             current_volume = current_candle['Volume']
-            avg_volume = df['Volume'].rolling(window=10).mean().iloc[-1]
+            avg_volume = df['Volume'].rolling(window=10).mean().iloc[-1] if len(df) >= 10 else current_volume
             
             technical_data.append({
                 "symbol": symbol,
                 "price": round(current_price, 2),
-                "rsi": round(current_candle['RSI'], 2),
-                "macd": round(current_candle['MACD'], 2),
+                "prev_day_close": round(prev_day_close, 2),
+                "price_change_from_prev": round(current_price - prev_day_close, 2),
+                "rsi": round(current_candle['RSI'], 2) if not pd.isna(current_candle['RSI']) else 50,
+                "macd": round(current_candle['MACD'], 2) if not pd.isna(current_candle['MACD']) else 0,
                 "volume": int(current_volume),
                 "avg_volume": int(avg_volume),
-                "history": candle_history,
-                "price_change": round(current_price - prev_candle['Close'], 2)
+                "history": candle_history
             })
         except Exception as e:
             print(f"Error fetching data for {symbol}: {e}")
@@ -97,7 +98,7 @@ def get_ai_analysis(technical_data, is_market_close=False):
     if not technical_data:
         return []
     
-    print(f"Asking AI for Market Analysis (Market Close Mode: {is_market_close})...")
+    print(f"Asking AI for Market Analysis (Market Close: {is_market_close})...")
     client = genai.Client(api_key=GEMINI_API_KEY)
     all_ai_results = []
     
@@ -112,7 +113,7 @@ def get_ai_analysis(technical_data, is_market_close=False):
             You are an elite stock market strategist. Analyze the FULL DAY closing technical data for these Indian stocks:
             {json.dumps(batch)}
             
-            Since the market just closed at 3:30 PM, provide a comprehensive daily wrap-up and STRATEGY FOR TOMORROW.
+            Provide a comprehensive daily wrap-up and STRATEGY FOR TOMORROW.
             Return ONLY a valid JSON array of objects. No markdown, no extra text. 
             Use exactly these keys:
             - "symbol": The stock symbol.
@@ -121,17 +122,21 @@ def get_ai_analysis(technical_data, is_market_close=False):
             - "ai_reason": A detailed 2-sentence wrap-up of today's behavior and specific actionable strategy/levels for tomorrow's opening.
             """
         else:
+            # രാവിലെ ഡാറ്റ കുറവാണെങ്കിൽ പ്രീവിയസ് ക്ലോസിങ് വെച്ചും, പിന്നീട് സീക്വൻഷ്യൽ കാൻഡിലുകൾ വെച്ചും അനലൈസ് ചെയ്യാൻ നിർദ്ദേശം നൽകുന്നു
             prompt = f"""
-            You are an elite stock market technical analyst. Analyze this timeframe technical data including recent history for Indian stocks:
+            You are an elite stock market technical analyst. Analyze this 30-minute timeframe technical data including previous day close and recent history for Indian stocks:
             {json.dumps(batch)}
             
-            Evaluate Price Action, RSI, MACD, and sequential momentum. 
+            Instructions:
+            - If early morning (few candles available), compare the current price action and volume against the 'prev_day_close' to find opening momentum or gap behavior.
+            - If multiple sequential candles are available, evaluate backward tracking (sequential momentum in RSI, volume, and price).
+            
             Return ONLY a valid JSON array of objects. No markdown, no extra text. 
             Use exactly these keys:
             - "symbol": The stock symbol.
             - "trend": "Strong Bullish", "Bullish", "Neutral", "Bearish", or "Strong Bearish".
             - "suggestion": One of ["STRONG BUY", "BUY ON DIP", "HOLD", "SELL", "AVERAGE"].
-            - "ai_reason": A crisp, professional 2-sentence technical justification based on recent momentum.
+            - "ai_reason": A crisp, professional 2-sentence technical justification mentioning previous day context or sequential momentum.
             """
         
         try:
@@ -168,9 +173,9 @@ def send_email(technical_data, ai_analysis, is_market_close=False):
         if ai_data:
             tech.update(ai_data)
         else:
-            tech['trend'] = 'N/A'
+            tech['trend'] = 'Neutral'
             tech['suggestion'] = 'HOLD'
-            tech['ai_reason'] = 'Analysis unavailable.'
+            tech['ai_reason'] = 'Analyzing market context based on previous close and opening volume.'
         final_results.append(tech)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -180,7 +185,7 @@ def send_email(technical_data, ai_analysis, is_market_close=False):
         title = "📊 Market Close Comprehensive Review & Next-Day Strategy"
     else:
         subject = f"PRO Market Intelligence: Intraday Alert - {now}"
-        title = "🤖 Sequential Intraday Action Report"
+        title = "🤖 Sequential & Previous-Day Context Intraday Report"
 
     html = f"""
     <html>
@@ -206,7 +211,7 @@ def send_email(technical_data, ai_analysis, is_market_close=False):
                 <th>RSI (14)</th>
                 <th>Trend</th>
                 <th>Action / Suggestion</th>
-                <th>{'Tomorrow Strategy & Wrap-up' if is_market_close else 'Sequential Analysis'}</th>
+                <th>{'Tomorrow Strategy & Wrap-up' if is_market_close else 'Context & Sequential Analysis'}</th>
             </tr>
     """
 
@@ -254,16 +259,11 @@ if __name__ == "__main__":
     if not stocks:
         stocks = ["RELIANCE", "TCS", "HDFCBANK", "INFY"]
         
-    # നിലവിലെ സമയം നോക്കി ഇത് മാർക്കറ്റ് ക്ലോസിങ് ടൈം (ഉദാ: 3:35 PM) ആണോ എന്ന് പരിശോധിക്കുന്നു
     current_hour = datetime.now().hour
     current_minute = datetime.now().minute
+    is_market_close = (current_hour == 10 and current_minute >= 0)
     
-    # UTC ടൈമിൽ 3:35 PM IST എന്നത് 10:05 UTC ആണ്. അതിനാൽ അവരെ വേർതിരിച്ചറിയാൻ:
-    # (GitHub Actions ക്രമീകരണം അനുസരിച്ച് 3:35-ന് റൺ ചെയ്യുമ്പോൾ ഡെയ്‌ലി ക്ലോസിങ് മോഡ് ആകും)
-    is_market_close = (current_hour == 10 and current_minute >= 0) # അല്ലെങ്കിൽ ലോക്കൽ ടൈം പരിശോധിക്കാം
-    
-    # ലളിതമായി പരിശോധിക്കാൻ UTC സമയം 10 ആയതുകൊണ്ട് അത് ഉപയോഗിക്കാം
-    print(f"Mode: {'Market Close Wrap-up' if is_market_close else 'Intraday 30-min/Hourly'}")
+    print(f"Mode: {'Market Close Wrap-up' if is_market_close else 'Intraday with Previous-Day & Sequential Context'}")
     
     tech_data = get_technical_data(stocks, is_market_close=is_market_close)
     
