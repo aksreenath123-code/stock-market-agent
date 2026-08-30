@@ -22,7 +22,7 @@ GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
 
 # നിങ്ങളുടെ യഥാർത്ഥ ഗൂഗിൾ ഷീറ്റിന്റെ ID ഇവിടെ കൊടുക്കുക!
-SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE" 
+SHEET_ID = "1Voy-zrWnAbT4ICqThGLZ6tJJJPWYJ0VuFI8nC-BmBqI" 
 
 def get_stocks_from_sheet():
     try:
