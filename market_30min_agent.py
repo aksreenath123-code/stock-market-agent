@@ -108,7 +108,7 @@ def get_ai_analysis(technical_data):
         """
         
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-1.5-pro',
             contents=prompt
         )
         
