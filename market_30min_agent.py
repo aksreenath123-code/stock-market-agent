@@ -10,9 +10,8 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from ta.momentum import RSIIndicator
 from ta.trend import MACD
-
-# പുതിയ ഗൂഗിൾ AI പാക്കേജ്
 from google import genai
+from google.genai import types # JSON ഔട്ട്പുട്ട് ഉറപ്പാക്കാൻ
 
 # Secrets
 GMAIL_SENDER = os.environ.get("GMAIL_SENDER")
@@ -21,8 +20,8 @@ GMAIL_RECEIVER = os.environ.get("GMAIL_RECEIVER")
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
 
-# നിങ്ങളുടെ ഗൂഗിൾ ഷീറ്റിന്റെ URL-ൽ നിന്നുള്ള ID ഇവിടെ നൽകുക (പേരിന് പകരം ഇതാണ് നല്ലത്)
-SHEET_ID = "1Voy-zrWnAbT4ICqThGLZ6tJJJPWYJ0VuFI8nC-BmBqI" 
+# നിങ്ങളുടെ യഥാർത്ഥ ഗൂഗിൾ ഷീറ്റിന്റെ ID ഇവിടെ കൊടുക്കുക!
+SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE" 
 
 def get_stocks_from_sheet():
     try:
@@ -31,7 +30,6 @@ def get_stocks_from_sheet():
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         
-        # ID ഉപയോഗിച്ച് നേരിട്ട് ഷീറ്റ് തുറക്കുന്നു
         sheet = client.open_by_key(SHEET_ID).sheet1
         records = sheet.get_all_values()
         
@@ -46,15 +44,12 @@ def get_technical_data(stocks):
     for symbol in stocks:
         try:
             ticker = symbol if symbol.endswith(".NS") or symbol.endswith(".BO") else f"{symbol}.NS"
-            
-            # 1-Dimensional Error ഒഴിവാക്കാൻ Ticker.history() ഉപയോഗിക്കുന്നു
             stock_data = yf.Ticker(ticker)
             df = stock_data.history(period="5d", interval="30m")
             
             if df.empty or len(df) < 20:
                 continue
 
-            # ഇൻഡിക്കേറ്ററുകൾ കാൽക്കുലേറ്റ് ചെയ്യുന്നു
             close_series = df['Close'].squeeze()
             df['RSI'] = RSIIndicator(close=close_series, window=14).rsi()
             macd = MACD(close=close_series)
@@ -87,33 +82,37 @@ def get_ai_analysis(technical_data):
     if not technical_data:
         return []
     
-    print("Asking AI for Market Analysis...")
+    print("Asking AI (Gemini Pro) for Market Analysis...")
     try:
-        # പുതിയ Gemini API സിന്റാക്സ്
         client = genai.Client(api_key=GEMINI_API_KEY)
         
+        # കൂടുതൽ പ്രൊഫഷണൽ ആയ പ്രോംപ്റ്റ്
         prompt = f"""
-        You are an expert intraday and short-term stock market technical analyst.
-        Analyze the following 30-minute timeframe technical data for Indian stocks:
+        You are an elite stock market technical analyst. Analyze this 30-minute timeframe technical data for Indian stocks:
         {json.dumps(technical_data)}
         
-        Based on Price action, RSI, MACD, and Volume crossover, provide a detailed analysis for EACH stock.
-        Return the response strictly as a JSON array of objects with the following keys:
-        - symbol: The stock symbol.
-        - trend: "Bullish", "Bearish", or "Neutral".
-        - suggestion: Choose one from ["BUY", "SELL", "HOLD", "BUY ON DIP", "AVERAGE"].
-        - ai_reason: A sharp 2-sentence explanation of WHY this suggestion is given based on the provided technicals (mention RSI/Volume/MACD).
+        Evaluate Price Action, RSI (oversold/overbought), MACD crossovers, and Volume spikes. 
+        Provide a highly accurate trading suggestion for each stock.
         
-        Do not output any markdown formatting or extra text, just the raw JSON array.
+        Return ONLY a valid JSON array of objects. No markdown, no extra text. 
+        Use exactly these keys:
+        - "symbol": The stock symbol.
+        - "trend": "Strong Bullish", "Bullish", "Neutral", "Bearish", or "Strong Bearish".
+        - "suggestion": One of ["STRONG BUY", "BUY ON DIP", "HOLD", "SELL", "AVERAGE"].
+        - "ai_reason": A crisp, professional 2-sentence technical justification (e.g., "RSI is at 28 indicating oversold, combined with a bullish MACD crossover. Good risk-reward for a quick swing.").
         """
         
+        # നിർബന്ധമായും JSON ഔട്ട്പുട്ട് വരാനും, Gemini 1.5 Pro ഉപയോഗിക്കാനും കോൺഫിഗർ ചെയ്യുന്നു
         response = client.models.generate_content(
             model='gemini-1.5-pro',
-            contents=prompt
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            )
         )
         
-        cleaned_response = response.text.strip().replace('```json', '').replace('```', '')
-        ai_results = json.loads(cleaned_response)
+        # പ്യുവർ JSON ആയതുകൊണ്ട് നേരെ ലോഡ് ചെയ്യാം
+        ai_results = json.loads(response.text)
         return ai_results
     except Exception as e:
         print(f"AI Analysis Failed: {e}")
@@ -126,38 +125,43 @@ def send_email(technical_data, ai_analysis):
 
     final_results = []
     for tech in technical_data:
-        ai_data = next((item for item in ai_analysis if item["symbol"] == tech["symbol"]), None)
+        ai_data = next((item for item in ai_analysis if item.get("symbol") == tech["symbol"]), None)
         if ai_data:
             tech.update(ai_data)
-            final_results.append(tech)
+        else:
+            tech['trend'] = 'N/A'
+            tech['suggestion'] = 'HOLD'
+            tech['ai_reason'] = 'AI Analysis unavailable due to API timeout.'
+        final_results.append(tech)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    subject = f"AI Market Intelligence: 30-Min Alert - {now}"
+    subject = f"PRO Market Intelligence: 30-Min Alert - {now}"
 
     html = f"""
     <html>
     <head>
         <style>
-            table {{ border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 14px; }}
-            th, td {{ border: 1px solid #dddddd; text-align: left; padding: 10px; }}
-            th {{ background-color: #f4f4f4; color: #333; }}
-            .buy {{ color: green; font-weight: bold; }}
-            .sell {{ color: red; font-weight: bold; }}
-            .hold {{ color: gray; font-weight: bold; }}
-            .avg {{ color: #007bff; font-weight: bold; }}
+            table {{ border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 14px; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }}
+            th, td {{ border: 1px solid #dddddd; text-align: left; padding: 12px; }}
+            th {{ background-color: #1a252f; color: #ffffff; text-transform: uppercase; font-size: 13px; }}
+            tr:nth-child(even) {{ background-color: #f8f9fa; }}
+            .buy {{ color: #27ae60; font-weight: bold; }}
+            .sell {{ color: #c0392b; font-weight: bold; }}
+            .hold {{ color: #7f8c8d; font-weight: bold; }}
+            .avg {{ color: #2980b9; font-weight: bold; }}
         </style>
     </head>
     <body>
-        <h2 style="color: #2c3e50;">🤖 AI Market Intelligence Report (30-Min Timeframe)</h2>
-        <p><b>Time:</b> {now}</p>
+        <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">🤖 Gemini Pro: Intraday Action Report</h2>
+        <p style="color: #555;"><b>Time:</b> {now}</p>
         <table>
             <tr>
                 <th>Stock</th>
                 <th>Price (₹)</th>
-                <th>RSI</th>
-                <th>AI Trend</th>
-                <th>AI Suggestion</th>
-                <th>AI Expert Analysis</th>
+                <th>RSI (14)</th>
+                <th>Trend</th>
+                <th>Action</th>
+                <th>Expert Pro Analysis</th>
             </tr>
     """
 
@@ -171,15 +175,15 @@ def send_email(technical_data, ai_analysis):
         html += f"""
             <tr>
                 <td><b>{res['symbol']}</b></td>
-                <td>{res['price']}</td>
+                <td><b>{res['price']}</b></td>
                 <td>{res['rsi']}</td>
                 <td>{res.get('trend', 'Neutral')}</td>
                 <td class="{color_class}">{sug}</td>
-                <td style="font-size: 13px; color: #555;">{res.get('ai_reason', 'Analysis pending.')}</td>
+                <td style="font-size: 13px; color: #333; line-height: 1.4;">{res.get('ai_reason', 'Analysis pending.')}</td>
             </tr>
         """
     
-    html += "</table><br><p>Happy Trading! - <i>Powered by Gemini AI & Market Agent Pro</i></p></body></html>"
+    html += "</table><br><p style='font-size: 12px; color: #999;'>Happy Trading! - <i>Powered by Gemini 1.5 Pro & Market Agent Pro</i></p></body></html>"
 
     msg = MIMEMultipart()
     msg['From'] = GMAIL_SENDER
@@ -203,7 +207,7 @@ if __name__ == "__main__":
     stocks = get_stocks_from_sheet()
     
     if not stocks:
-        print("Using Fallback Stocks...")
+        print("No stocks found in sheet, using Fallback...")
         stocks = ["RELIANCE", "TCS", "HDFCBANK", "INFY"]
         
     print(f"Calculating Technical Data for {len(stocks)} stocks...")
