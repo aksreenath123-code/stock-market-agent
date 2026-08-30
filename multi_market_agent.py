@@ -1,4 +1,3 @@
-
 import sys
 import subprocess
 
@@ -154,7 +153,7 @@ def fetch_indian_market():
     """
     
     response = client.models.generate_content(
-        model="gemini-3.1-pro",
+        model="gemini-3.6-flash",
         contents=prompt
     )
     return "🇮🇳 Indian Market: 1-Week Swing Radar (RSI + Volume 3-5% Target)", response.text.replace("```html", "").replace("```", "").strip()
@@ -194,7 +193,7 @@ def fetch_us_market():
     """
 
     response = client.models.generate_content(
-        model="gemini-3.1-pro",
+        model="gemini-3.6-flash",
         contents=prompt
     )
     return "🇺🇸 US Market: Pre-Opening Swing Radar (RSI + Volume 3-5% Target)", response.text.replace("```html", "").replace("```", "").strip()
@@ -220,4 +219,4 @@ if __name__ == "__main__":
         subject, content = fetch_indian_market()
 
     send_email(subject, content)
-    print(f"✅ {market_type.upper()} സ്വിംഗ് ട്രേഡിംഗ് റിപ്പോർട്ട് (Gemini 3.1 Pro വഴി) വിജയകരമായി അയച്ചു!")
+    print(f"✅ {market_type.upper()} സ്വിംഗ് ട്രേഡിംഗ് റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
