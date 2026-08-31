@@ -6,7 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ==================== 1. ലൈബ്രറി ഇൻസ്റ്റാളേഷൻ ====================
 REQUIRED_PACKAGES = ["requests", "google-genai", "beautifulsoup4"]
@@ -32,108 +32,128 @@ RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ==================== 3. Intelligent Deep Scraper ====================
-def fetch_in_depth_ipo_data():
-    print("🌐 ഇന്റലിജന്റ് ഡീപ് സ്ക്രാപ്പിംഗ് ആരംഭിക്കുന്നു...")
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
-    }
-    ipo_data = []
-    
-    # സ്റ്റെപ്പ് 1: മെയിൻ പേജിൽ നിന്നും നിലവിലെ IPO-കളുടെ ലിങ്കുകൾ എടുക്കുന്നു
-    main_url = "https://www.investorgain.com/report/ipo-gmp-live/331/"
-    target_links = []
+# ==================== 3. SMART FILTERING & IN-DEPTH SCRAPER ====================
+def get_active_and_upcoming_links():
+    """ആദ്യം മെയിൻ പേജിൽ പോയി ഓപ്പൺ/അപ്കമിംഗ് ഐപിഒകളുടെ ലിങ്ക് മാത്രം ഫിൽറ്റർ ചെയ്ത് എടുക്കുന്നു"""
+    print("🔍 സ്റ്റെപ്പ് 1: Active & Upcoming ഐപിഒകളെ കണ്ടെത്തുന്നു...")
+    url = "https://www.investorgain.com/report/ipo-gmp-live/331/"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    active_links = []
     
     try:
-        res = requests.get(main_url, headers=headers, timeout=15)
+        res = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(res.text, "html.parser")
+        table = soup.find('table')
+        if not table: return []
         
-        main_data = "--- Main GMP Dashboard ---\n"
-        tables = soup.find_all('table')
-        if tables:
-            for row in tables[0].find_all('tr'):
-                cols = row.find_all(['th', 'td'])
-                main_data += " | ".join([c.get_text(strip=True) for c in cols]) + "\n"
+        # ടേബിളിൽ 'Close' ഡേറ്റ് ഏത് കോളത്തിൽ ആണെന്ന് കണ്ടുപിടിക്കുന്നു
+        ths = table.find_all('th')
+        header_texts = [th.get_text(strip=True).lower() for th in ths]
+        close_idx = -1
+        for i, h in enumerate(header_texts):
+            if 'close' in h:
+                close_idx = i
+                break
+        
+        # ഇന്ത്യൻ സമയം എടുക്കുന്നു
+        ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        
+        for row in table.find_all('tr')[1:]:
+            cols = row.find_all('td')
+            if not cols: continue
+            
+            a_tag = cols[0].find('a')
+            if not a_tag or 'href' not in a_tag.attrs:
+                continue
                 
-                # IPO-യുടെ ഇൻഡിവിജ്വൽ പേജ് ലിങ്ക് കണ്ടെത്തുന്നു
-                if cols:
-                    a_tag = cols[0].find('a')
-                    if a_tag and 'href' in a_tag.attrs:
-                        target_links.append(a_tag['href'])
-                        
-        ipo_data.append(main_data[:5000])
+            link = a_tag['href']
+            if not link.startswith("http"):
+                link = "https://www.investorgain.com" + link
+            
+            is_active = False
+            if close_idx != -1 and len(cols) > close_idx:
+                close_date_str = cols[close_idx].get_text(strip=True)
+                # തീയതി ഇല്ലെങ്കിലോ (TBA), അല്ലെങ്കിൽ ക്ലോസ് ഡേറ്റ് ഇന്നോ അതിനുശേഷമോ ആണെങ്കിലോ Active ആയി കണക്കാക്കും
+                if close_date_str == "-" or close_date_str == "" or "tba" in close_date_str.lower():
+                    is_active = True
+                else:
+                    try:
+                        close_date = datetime.strptime(f"{close_date_str}-{ist_now.year}", "%d-%b-%Y")
+                        if close_date.date() >= ist_now.date():
+                            is_active = True
+                    except:
+                        is_active = True # തീയതി വായിക്കാൻ കഴിഞ്ഞില്ലെങ്കിൽ ബാക്കപ്പ് ആയി എടുക്കുന്നു
+            else:
+                if len(active_links) < 8: is_active = True
+                    
+            if is_active:
+                active_links.append(link)
+                
     except Exception as e:
-        print(f"❌ Main URL Error: {e}")
+        print(f"❌ മെയിൻ പേജ് അനാലിസിസ് എറർ: {e}")
+        
+    return active_links
 
-    # സ്റ്റെപ്പ് 2: കണ്ടെത്തിയ ലിങ്കുകളിൽ പോയി Day-by-Day GMP & Subscription എടുക്കുന്നു (ആദ്യത്തെ 8 എണ്ണം മാത്രം)
-    print(f"🔗 {len(target_links)} ലിങ്കുകൾ കണ്ടെത്തി. ഇവയിൽ കയറി ഡാറ്റ എടുക്കുന്നു...")
+def fetch_in_depth_ipo_data():
+    """കണ്ടെത്തിയ ലിങ്കുകളിൽ മാത്രം പോയി ഇൻഡെപ്ത് സ്ക്രാപ്പിംഗ് നടത്തുന്നു"""
+    target_links = get_active_and_upcoming_links()
     
-    for link in target_links[:8]:
-        if not link.startswith("http"):
-            link = "https://www.investorgain.com" + link
+    if not target_links:
+        return ""
+        
+    print(f"🎯 {len(target_links)} Active/Upcoming ഐപിഒകൾ കണ്ടെത്തി. സ്റ്റെപ്പ് 2: ഇൻഡെപ്ത് സ്ക്രാപ്പിംഗ് ആരംഭിക്കുന്നു...")
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    ipo_data = []
+    
+    for link in target_links:
         try:
-            print(f"🔍 ഡീപ് സ്ക്രാപ്പിംഗ്: {link}")
+            print(f"   👉 സ്ക്രാപ്പ് ചെയ്യുന്നു: {link}")
             r = requests.get(link, headers=headers, timeout=10)
             ip_soup = BeautifulSoup(r.text, "html.parser")
             
-            details = f"--- Detailed Data (Daily GMP & Subs) for {link} ---\n"
-            # ഇൻഡിവിജ്വൽ പേജിലെ ആദ്യത്തെ 6 ടേബിളുകൾ എടുക്കുന്നു (ഇതിലാണ് ഹിസ്റ്ററി ഉള്ളത്)
+            details = f"--- Detailed Data for {link} ---\n"
+            # സബ്സ്ക്രിപ്ഷനും ഡെയിലി ജിഎംപിയും ഉൾപ്പെടുന്ന ആദ്യത്തെ 6 ടേബിളുകൾ മാത്രം എടുക്കുന്നു
             for tb in ip_soup.find_all('table')[:6]: 
                 for tr in tb.find_all('tr'):
                     details += " | ".join([td.get_text(strip=True) for td in tr.find_all(['th', 'td'])]) + "\n"
             ipo_data.append(details[:4000])
         except Exception as e:
-            print(f"❌ Error scraping {link}")
-
-    # സ്റ്റെപ്പ് 3: ചിറ്റോർഗഡിലെ സബ്സ്ക്രിപ്ഷൻ പേജ് കൂടി ബാക്കപ്പ് ആയി എടുക്കുന്നു
-    try:
-        c_url = "https://www.chittorgarh.com/report/ipo_subscription_status_live/21/"
-        r = requests.get(c_url, headers=headers, timeout=10)
-        c_soup = BeautifulSoup(r.text, "html.parser")
-        c_data = "--- Chittorgarh Subscription Details ---\n"
-        for tb in c_soup.find_all('table')[:2]:
-            for tr in tb.find_all('tr'):
-                c_data += " | ".join([td.get_text(strip=True) for td in tr.find_all(['th', 'td'])]) + "\n"
-        ipo_data.append(c_data[:5000])
-    except Exception as e:
-        pass
-        
+            print(f"❌ Error scraping {link}: {e}")
+            
     return "\n\n".join(ipo_data)
 
 # ==================== 4. AI അനാലിസിസ് ====================
 def analyze_ipo_data(raw_data):
-    print("🧠 AI ഡാറ്റ വിശകലനം ചെയ്യുന്നു...")
+    print("🧠 സ്റ്റെപ്പ് 3: AI ഡാറ്റ വിശകലനം ചെയ്യുന്നു...")
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     prompt = f"""
     നിങ്ങൾ ഒരു വിദഗ്ദ്ധനായ ഇന്ത്യൻ സ്റ്റോക്ക് മാർക്കറ്റ് & IPO അനലിസ്റ്റാണ്. 
-    താഴെ നൽകിയിരിക്കുന്നത് മെയിൻ പേജുകളിൽ നിന്നും, ഓരോ ഐപിഒയുടെയും ഇൻഡിവിജ്വൽ പേജുകളിൽ നിന്നും (Deep Scraped) എടുത്ത വിശദമായ ഡാറ്റയാണ്. ഇതിൽ ഓരോ ദിവസത്തെയും GMP ഹിസ്റ്ററിയും കൃത്യമായ സബ്സ്ക്രിപ്ഷനും ഉൾപ്പെടുന്നു.
-    ഇന്നത്തെ തീയതി: {current_date}.
+    താഴെ നൽകിയിരിക്കുന്ന ഡാറ്റ നിലവിൽ ഓപ്പൺ ആയിട്ടുള്ളതും (Active), വരാനിരിക്കുന്നതുമായ (Upcoming) ഐപിഒകളുടേത് മാത്രമാണ് (ഇതിൽ ക്ലോസ് ആയവ ഒന്നുമില്ല).
     
-    🚨 കർശനമായ മാനദണ്ഡങ്ങൾ (CRITICAL RULES):
-    1. **VALIDITY CHECK:** ക്ലോസ് ചെയ്യാത്ത (Currently Open) ഐപിഒകളും, വരാനിരിക്കുന്ന (Upcoming) ഐപിഒകളും മാത്രമേ റിപ്പോർട്ടിൽ ഉൾപ്പെടുത്താവൂ.
-    2. **SUBSCRIPTION DETAILS:** ഇൻഡിവിജ്വൽ പേജുകളുടെ ഡാറ്റയിൽ നിന്നും QIB, NII, Retail എന്നിവ കൃത്യമായി കണ്ടെത്തി 'Subscription' കോളത്തിൽ നൽകുക.
-    3. **DAILY GMP HISTORY & AI STRATEGY:** 
-       - ഡാറ്റയിലുള്ള തിയ്യതി തിരിച്ചുള്ള GMP വിവരങ്ങൾ (Date-wise GMP) പരിശോധിച്ച്, കഴിഞ്ഞ 4-5 ദിവസങ്ങളിലെ GMP ട്രെൻഡ് (ഉദാ: Day 1: ₹10, Day 2: ₹12...) 'AI Analysis & Recommendation' കോളത്തിൽ ലിസ്റ്റ് ആയി ചേർക്കുക.
-       - ലിസ്റ്റിംഗ് ഗെയിൻ 15%-ന് മുകളിൽ ആണെങ്കിൽ "🟢 APPLY", അല്ലെങ്കിൽ "🔴 AVOID" എന്ന് നിർദ്ദേശിക്കുക. കാരണം വ്യക്തമാക്കുക.
+    🚨 നിങ്ങളുടെ ടാസ്ക്കുകൾ:
+    1. **SUBSCRIPTION DETAILS:** ഇൻഡിവിജ്വൽ പേജുകളുടെ ഡാറ്റയിൽ നിന്നും ഓരോ ഐപിഒയുടെയും QIB, NII, Retail സബ്സ്ക്രിപ്ഷൻ വിവരങ്ങൾ (എത്ര മടങ്ങ് എന്ന്) കൃത്യമായി കണ്ടെത്തി 'Subscription' കോളത്തിൽ നൽകുക.
+    2. **DAILY GMP HISTORY & AI STRATEGY:** 
+       - ഡാറ്റയിലുള്ള തിയ്യതി തിരിച്ചുള്ള GMP വിവരങ്ങൾ പരിശോധിച്ച്, കഴിഞ്ഞ 4-5 ദിവസങ്ങളിലെ ഡെയിലി GMP ഹിസ്റ്ററി (ഉദാ: Day 1: ₹10, Day 2: ₹12...) 'AI Analysis & Recommendation' കോളത്തിൽ ലിസ്റ്റ് ആയി ചേർക്കുക.
+       - പ്രതീക്ഷിക്കുന്ന ലിസ്റ്റിംഗ് ഗെയിൻ (Listing Gain) 15%-ന് മുകളിൽ ആണെങ്കിൽ "🟢 APPLY" എന്നും, അല്ലെങ്കിൽ "🔴 AVOID" എന്നും നിർദ്ദേശിക്കുക. നിങ്ങളുടെ തീരുമാനത്തിനുള്ള കാരണം വ്യക്തമാക്കുക.
     
     📋 OUTPUT FORMAT (CRITICAL):
     ഒരു Excel ഷീറ്റ് പോലെയുള്ള മനോഹരമായ **HTML ടേബിൾ** രൂപത്തിൽ മാത്രം ഔട്ട്പുട്ട് നൽകുക. ടേബിളിൽ താഴെ പറയുന്ന 6 കോളങ്ങൾ ഉണ്ടായിരിക്കണം:
     
     | IPO Name | Dates (Start - End) | GMP & Listing Gain (%) | Subscription (QIB/NII/Retail) | GMP Trend (ഉയരുന്നു/കുറയുന്നു) | AI Analysis, Recommendation & Daily GMP History |
     
-    - കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം മറുപടി നൽകുക. 
+    - കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം മറുപടി നൽകുക. കാർഡുകൾ ഉപയോഗിക്കരുത്.
     
     ഡാറ്റ:
     {raw_data}
     """
     
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "📊 Deep IPO Analysis: Daily GMP History & Exact Subscriptions", response.text.replace("```html", "").replace("```", "").strip()
+    return "📊 IPO Analysis: Active & Upcoming Scraped Report", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 5. ഇമെയിൽ അയക്കൽ ====================
 def send_email(subject, html_content):
-    print("📧 ഇമെയിൽ അയക്കുന്നു...")
+    print("📧 സ്റ്റെപ്പ് 4: ഇമെയിൽ അയക്കുന്നു...")
     msg = MIMEMultipart("alternative")
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
@@ -154,8 +174,8 @@ def send_email(subject, html_content):
     </style>
     </head>
     <body>
-    <h2 style='color: #2c3e50; margin-bottom: 5px;'>IPO Analysis Report</h2>
-    <p style='color: #7f8c8d; font-size: 12px; margin-bottom: 20px;'>* Includes Day-by-Day GMP trends and Deep Subscription Analysis.</p>
+    <h2 style='color: #2c3e50; margin-bottom: 5px;'>🎯 Active & Upcoming IPO Analysis Report</h2>
+    <p style='color: #7f8c8d; font-size: 13px; margin-bottom: 20px;'>* Only currently open and upcoming IPOs are strictly filtered and analyzed in-depth for Subscriptions and Daily GMP trends.</p>
     {html_content}
     </body>
     </html>
@@ -173,8 +193,9 @@ def send_email(subject, html_content):
 
 if __name__ == "__main__":
     extracted_data = fetch_in_depth_ipo_data()
+    
     if extracted_data.strip():
         subject, content = analyze_ipo_data(extracted_data)
         send_email(subject, content)
     else:
-        print("ഡാറ്റ ലഭ്യമല്ല. പ്രോഗ്രാം നിർത്തുന്നു.")
+        print("നിലവിൽ ഓപ്പൺ ആയിട്ടുള്ളതോ വരാനിരിക്കുന്നതോ ആയ ഐപിഒകൾ ഒന്നും കണ്ടെത്തിയില്ല. ഇമെയിൽ അയയ്ക്കുന്നില്ല.")
