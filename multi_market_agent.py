@@ -12,6 +12,7 @@ REQUIRED_PACKAGES = [
 ]
 
 def install_missing_packages():
+    """ആവശ്യമായ ലൈബ്രറികൾ ഇല്ലെങ്കിൽ തനിയെ ഇൻസ്റ്റാൾ ചെയ്യുന്നു"""
     for package in REQUIRED_PACKAGES:
         try:
             pkg_name = "google.genai" if package == "google-genai" else ("bs4" if package == "beautifulsoup4" else package)
@@ -152,4 +153,61 @@ def fetch_indian_market():
     """
     
     response = client.models.generate_content(model="gemini-1.5-pro", contents=prompt)
-    return "🇮🇳 Indian Market: Top 10 Swing Picks & Breakouts", response.text.replace("```html", "").replace("
+    return "🇮🇳 Indian Market: Top 10 Swing Picks & Breakouts", response.text.replace("```html", "").replace("```", "").strip()
+
+# ==================== 6. US MARKET SCANNER ====================
+def fetch_us_market():
+    us_tickers = [
+        "NVDA", "AAPL", "MSFT", "TSLA", "AMZN", "GOOGL", "META", "AMD",
+        "NFLX", "PLTR", "AVGO", "SMCI", "COIN", "MARA", "QCOM", "ARM",
+        "UBER", "CRWD", "PYPL", "INTC", "DIS", "CRM", "MSTR", "MU", 
+        "CSCO", "ADBE", "PEP", "COST", "TMUS", "TXN", "INTU", "AMAT",
+        "ISRG", "NOW", "BKNG", "VRTX", "REGN", "ADI", "PANW", "SNPS"
+    ]
+    
+    print("🇺🇸 യുഎസ് സ്റ്റോക്കുകളുടെ ഡാറ്റ സ്കാൻ ചെയ്യുന്നു...")
+    us_swing_candidates = scan_tickers_for_swing(us_tickers)
+    
+    prompt = f"""
+    നിങ്ങൾ ഒരു Wall Street സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. താഴെ നൽകിയിരിക്കുന്ന യുഎസ് ഡാറ്റ വിശകലനം ചെയ്യുക.
+    
+    🚨 കർത്തശനമായ നിർദ്ദേശങ്ങൾ (CRITICAL INSTRUCTIONS):
+    1. STOCK NAME & SYMBOL MISSING ISSUE: ഓരോ സ്റ്റോക്കിന്റെയും പേരും സിംബലും കാർഡിന്റെ ഹെഡിംഗിൽ നിർബന്ധമായും നൽകിയിരിക്കണം. (ഉദാഹരണത്തിന്: <h3>NVIDIA (NVDA)</h3>). ഇത് ഒഴിവാക്കരുത്!
+    2. കൃത്യം 20 സ്റ്റോക്കുകൾ താഴെ പറയുന്ന 3 വിഭാഗങ്ങളിലായി തരംതിരിക്കുക:
+       - സെക്ഷൻ 1: 🏆 ടോപ്പ് 10 സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (Rank 1 മുതൽ 10 വരെ). ഏറ്റവും വിജയസാധ്യതയുള്ളത് (Highest Probability of 3-5% profit in 1 week) ഒന്നാമതായി നൽകുക.
+       - സെക്ഷൻ 2: 🚀 5 ഹൈ മൊമെന്റം സ്റ്റോക്കുകൾ (High RSI & Strong Uptrend).
+       - സെക്ഷൻ 3: 💥 5 ഹൈ വോളിയം ബ്രേക്ക്ഔട്ട് സ്റ്റോക്കുകൾ (RVOL > 1.5x).
+
+    ഓരോ സ്റ്റോക്കിനും Entry Zone, Target (3-5%), Stop Loss എന്നിവ നൽകുക.
+
+    📊 യുഎസ് സാങ്കേതിക ഡാറ്റ:
+    {chr(10).join(us_swing_candidates)}
+
+    Modern Dark HTML കാർഡുകൾ ഉപയോഗിച്ച് മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
+    """
+
+    response = client.models.generate_content(model="gemini-1.5-pro", contents=prompt)
+    return "🇺🇸 US Market: Top 10 Swing Picks & Breakouts", response.text.replace("```html", "").replace("```", "").strip()
+
+# ==================== 7. ഇമെയിൽ അയക്കൽ ====================
+def send_email(subject, html_content):
+    msg = MIMEMultipart("alternative")
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECEIVER_EMAIL
+    msg["Subject"] = subject
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+        server.send_message(msg)
+
+if __name__ == "__main__":
+    market_type = sys.argv[1] if len(sys.argv) > 1 else "indian"
+    
+    if market_type == "us":
+        subject, content = fetch_us_market()
+    else:
+        subject, content = fetch_indian_market()
+
+    send_email(subject, content)
+    print(f"✅ {market_type.upper()} സ്വിംഗ് ട്രേഡിംഗ് റിപ്പോർട്ട് (10+5+5) വിജയകരമായി അയച്ചു!")
