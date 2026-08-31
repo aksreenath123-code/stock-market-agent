@@ -1,18 +1,19 @@
-name: AI 30-Min Market Agent
+name: AI Smart Market Agent
 
 on:
   schedule:
-    # 1. രാവിലെ ആദ്യത്തെ 30 മിനിറ്റ് ഇന്റർവലുകൾ (9:15, 9:45, 10:15, 10:45, 11:15 IST)
-    - cron: '45 3 * * 1-5'
-    - cron: '15,45 4,5 * * 1-5'
-    - cron: '15 6 * * 1-5'
+    # --- ഇൻട്രാഡേ സീക്വൻഷ്യൽ റണ്ണുകൾ ---
+    # 9:30 AM, 10:30 AM, 11:30 AM IST (4:00, 5:00, 6:00 UTC)
+    - cron: '0 4,5,6 * * 1-5'
+    
+    # 9:45 AM IST (4:15 UTC)
+    - cron: '15 4 * * 1-5'
+    
+    # 10:00 AM, 1:00 PM, 2:00 PM, 3:00 PM IST (4:30, 7:30, 8:30, 9:30 UTC)
+    - cron: '30 4,7,8,9 * * 1-5'
 
-    # 2. ഉച്ചയ്ക്ക് ശേഷമുള്ള 1 മണിക്കൂർ ഇന്റർവലുകൾ (12:15, 1:15, 2:15 IST)
-    - cron: '45 6 * * 1-5'
-    - cron: '45 7 * * 1-5'
-    - cron: '45 8 * * 1-5'
-
-    # 3. രാത്രി 8:30 PM IST-ക്ക് (15:00 UTC) ഡെയ്‌ലി കൺസോളിഡേറ്റഡ് & മണി കൺട്രോൾ പ്രോ റിപ്പോർട്ട്
+    # --- നൈറ്റ് കൺസോളിഡേറ്റഡ് റിപ്പോർട്ട് ---
+    # 8:30 PM IST (15:00 UTC)
     - cron: '0 15 * * 1-5'
 
   workflow_dispatch:
@@ -42,5 +43,5 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           GMAIL_RECEIVER: ${{ secrets.RECEIVER_EMAIL }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
-          MONEYCONTROL_COOKIE: ${{ secrets.MONEYCONTROL_COOKIE }} # മണി കൺട്രോൾ പ്രോ കുക്കി ഇവിടെ ചേർത്തിരിക്കുന്നു
+          MONEYCONTROL_COOKIE: ${{ secrets.MONEYCONTROL_COOKIE }}
         run: python market_30min_agent.py
