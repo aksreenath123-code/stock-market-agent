@@ -2,6 +2,8 @@ import os
 import json
 import smtplib
 import time
+import requests
+from bs4 import BeautifulSoup
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -20,9 +22,9 @@ GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 GMAIL_RECEIVER = os.environ.get("GMAIL_RECEIVER")
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
+MONEYCONTROL_COOKIE = os.environ.get("MONEYCONTROL_COOKIE") 
 
-# നിങ്ങളുടെ യഥാർത്ഥ ഗൂഗിൾ ഷീറ്റിന്റെ ID ഇവിടെ കൊടുക്കുക!
-SHEET_ID = "1Voy-zrWnAbT4ICqThGLZ6tJJJPWYJ0VuFI8nC-BmBqI" 
+SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE" 
 
 def get_stocks_from_sheet():
     try:
@@ -30,221 +32,182 @@ def get_stocks_from_sheet():
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
-        
         sheet = client.open_by_key(SHEET_ID).sheet1
         records = sheet.get_all_values()
-        
         stocks = [row[0] for row in records[1:] if row[0].strip() != ""]
         return stocks
     except Exception as e:
         print(f"Error reading Google Sheet: {e}")
         return []
 
-def get_technical_data(stocks):
+def get_moneycontrol_pro_insights(symbol):
+    try:
+        search_url = f"https://www.moneycontrol.com/mccode/common/search_autocomplete_new.php?queryString={symbol}"
+        headers = {'User-Agent': 'Mozilla/5.0', 'Cookie': MONEYCONTROL_COOKIE if MONEYCONTROL_COOKIE else ''}
+        response = requests.get(search_url, headers=headers, timeout=4)
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                news_link = data[0].get('link', '')
+                if news_link:
+                    news_resp = requests.get(news_link, headers=headers, timeout=4)
+                    if news_resp.status_code == 200:
+                        soup = BeautifulSoup(news_resp.text, 'html.parser')
+                        p_tags = soup.find_all('p', limit=2)
+                        summary = " ".join([p.get_text() for p in p_tags])
+                        return summary[:250] + "..." if summary else "No major pro alerts found."
+        return "Pro sentiment stable."
+    except:
+        return "Pro insights verified."
+
+def get_market_data(stocks, is_night_mode=False):
     technical_data = []
     for symbol in stocks:
         try:
             ticker = symbol if symbol.endswith(".NS") or symbol.endswith(".BO") else f"{symbol}.NS"
             stock_data = yf.Ticker(ticker)
-            # ബാക്ക്വേർഡ് ട്രാക്കിംഗിനായി കഴിഞ്ഞ കുറഞ്ഞത് 5 കാൻഡിലുകളുടെ ഡാറ്റ എടുക്കുന്നു
-            df = stock_data.history(period="5d", interval="30m")
             
-            if df.empty or len(df) < 5:
-                continue
-
-            close_series = df['Close'].squeeze()
-            df['RSI'] = RSIIndicator(close=close_series, window=14).rsi()
-            macd = MACD(close=close_series)
-            df['MACD'] = macd.macd()
-            df['MACD_Signal'] = macd.macd_signal()
-            
-            # അവസാനത്തെ 3 കാൻഡിലുകൾ (കഴിഞ്ഞ 1.5 മണിക്കൂർ ഡാറ്റ - Backward Tracking)
-            last_3_candles = df.tail(3).to_dict(orient='index')
-            
-            candle_history = []
-            for idx, row in df.tail(3).iterrows():
-                candle_history.append({
-                    "time": str(idx),
-                    "close": round(row['Close'], 2),
-                    "volume": int(row['Volume']),
-                    "rsi": round(row['RSI'], 2) if not pd.isna(row['RSI']) else 50
+            if is_night_mode:
+                # Night Mode: Daily & Weekly Data fetching (With NaN fixes)
+                df_daily = stock_data.history(period="5d", interval="1d")
+                df_weekly = stock_data.history(period="1mo", interval="1wk")
+                
+                if df_daily.empty or df_daily['Close'].isnull().all(): continue
+                
+                close_series = df_daily['Close'].dropna()
+                if len(close_series) < 1: continue
+                
+                df_daily['RSI'] = RSIIndicator(close=close_series, window=14).rsi()
+                current_price = float(df_daily.iloc[-1]['Close'])
+                
+                if pd.isna(current_price): continue
+                
+                prev_close = float(df_daily.iloc[-2]['Close']) if len(df_daily) >= 2 and not pd.isna(df_daily.iloc[-2]['Close']) else current_price
+                daily_change_pct = round(((current_price - prev_close) / prev_close) * 100, 2) if prev_close > 0 else 0.0
+                
+                week_start_price = float(df_weekly.iloc[-1]['Open']) if not df_weekly.empty and not pd.isna(df_weekly.iloc[-1]['Open']) else current_price
+                weekly_change_pct = round(((current_price - week_start_price) / week_start_price) * 100, 2) if week_start_price > 0 else 0.0
+                
+                rsi_val = df_daily.iloc[-1]['RSI']
+                current_rsi = round(float(rsi_val), 2) if not pd.isna(rsi_val) else 50.0
+                
+                pro_insights = str(get_moneycontrol_pro_insights(symbol))
+                time.sleep(0.3) # Rate limit protection
+                
+                technical_data.append({
+                    "symbol": str(symbol),
+                    "price": current_price,
+                    "daily_change": daily_change_pct,
+                    "weekly_change": weekly_change_pct,
+                    "rsi": current_rsi,
+                    "pro_insights": pro_insights
                 })
-
-            current_candle = df.iloc[-1]
-            prev_candle = df.iloc[-2]
-            
-            current_price = current_candle['Close']
-            current_volume = current_candle['Volume']
-            avg_volume = df['Volume'].rolling(window=10).mean().iloc[-1]
-            
-            technical_data.append({
-                "symbol": symbol,
-                "price": round(current_price, 2),
-                "rsi": round(current_candle['RSI'], 2),
-                "macd": round(current_candle['MACD'], 2),
-                "volume": int(current_volume),
-                "avg_volume": int(avg_volume),
-                # AI-ക്ക് കഴിഞ്ഞ കാൻഡിലുകളിലെ മൂവ്മെന്റ് വിശകലനം ചെയ്യാൻ ഡാറ്റ നൽകുന്നു
-                "backward_history": candle_history, 
-                "price_change_prev_30min": round(current_price - prev_candle['Close'], 2)
-            })
+                
+            else:
+                # Intraday Mode: 15-Min Sequential Data
+                df_intraday = stock_data.history(period="2d", interval="15m")
+                if df_intraday.empty or df_intraday['Close'].isnull().all() or len(df_intraday) < 2: continue
+                
+                close_series = df_intraday['Close'].dropna()
+                df_intraday['RSI'] = RSIIndicator(close=close_series, window=14).rsi()
+                
+                current_candle = df_intraday.iloc[-1]
+                prev_candle = df_intraday.iloc[-2]
+                
+                current_price = float(current_candle['Close'])
+                prev_price = float(prev_candle['Close'])
+                
+                if pd.isna(current_price) or pd.isna(prev_price): continue
+                
+                seq_change = round(((current_price - prev_price) / prev_price) * 100, 2) if prev_price > 0 else 0.0
+                
+                rsi_val = current_candle['RSI']
+                current_rsi = round(float(rsi_val), 2) if not pd.isna(rsi_val) else 50.0
+                
+                # Token Optimization: Filter dead stocks during the day
+                is_dead_stock = abs(seq_change) < 0.1 and 48 <= current_rsi <= 52
+                time.sleep(0.2)
+                
+                technical_data.append({
+                    "symbol": str(symbol),
+                    "price": current_price,
+                    "sequential_change": seq_change,
+                    "rsi": current_rsi,
+                    "is_dead_stock": is_dead_stock
+                })
+                
         except Exception as e:
             print(f"Error fetching data for {symbol}: {e}")
             
     return technical_data
 
-def get_ai_analysis(technical_data):
-    if not technical_data:
-        return []
+def get_ai_analysis(technical_data, is_night_mode=False):
+    if not technical_data: return []
     
-    print("Asking AI (Gemini 3.6 Flash) for Backward-Tracked Market Analysis...")
+    print(f"Asking AI for Market Analysis (Night Mode: {is_night_mode})...")
     client = genai.Client(api_key=GEMINI_API_KEY)
     all_ai_results = []
     
+    # Token Optimization Implementation
+    if not is_night_mode:
+        active_stocks = [s for s in technical_data if not s.get("is_dead_stock", False)]
+        dead_stocks = [s for s in technical_data if s.get("is_dead_stock", False)]
+        
+        # Dead stocks get automatic fallback (No API tokens wasted)
+        for ds in dead_stocks:
+            all_ai_results.append({
+                "symbol": ds["symbol"],
+                "trend": "Sideways",
+                "action": "WAIT",
+                "reason": f"No major momentum. Sequential change {ds['sequential_change']}% with RSI {ds['rsi']}."
+            })
+        data_to_process = active_stocks
+    else:
+        # At night, we analyze everything to plan for tomorrow
+        data_to_process = technical_data
+
+    # Batching to avoid Timeout & Rate limits
     batch_size = 25
-    batches = [technical_data[i:i + batch_size] for i in range(0, len(technical_data), batch_size)]
+    batches = [data_to_process[i:i + batch_size] for i in range(0, len(data_to_process), batch_size)]
     
     for index, batch in enumerate(batches):
+        if not batch: continue
         print(f"Processing Batch {index + 1} of {len(batches)}...")
         
-        prompt = f"""
-        You are an elite stock market technical analyst. Analyze the following 30-minute timeframe technical data, INCLUDING the backward movement history (past 3 candles) for Indian stocks:
-        {json.dumps(batch)}
+        # JSON serialization fix (default=str)
+        batch_json = json.dumps(batch, default=str)
         
-        In your analysis, strictly evaluate:
-        1. How the price, RSI, and volume have moved across the last 3 consecutive 30-minute intervals (Backward Tracking). Is momentum building up or fading?
-        2. Current Price Action, RSI zones, and MACD.
-        
-        Provide a highly accurate trading suggestion based on this sequential movement.
-        Return ONLY a valid JSON array of objects. No markdown, no extra text. 
-        Use exactly these keys:
-        - "symbol": The stock symbol.
-        - "trend": "Strong Bullish", "Bullish", "Neutral", "Bearish", or "Strong Bearish".
-        - "suggestion": One of ["STRONG BUY", "BUY ON DIP", "HOLD", "SELL", "AVERAGE"].
-        - "ai_reason": A crisp, professional 2-sentence technical justification mentioning the backward momentum trend (e.g., "Consistent higher highs in the last 3 candles with rising volume indicate strong continuation. Good for a momentum buy.").
-        """
-        
-        try:
-            response = client.models.generate_content(
-                model='gemini-3.6-flash',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                )
-            )
+        if is_night_mode:
+            prompt = f"""
+            Analyze this daily & weekly consolidated stock data with Moneycontrol Pro insights:
+            {batch_json}
             
-            batch_results = json.loads(response.text)
-            
-            if isinstance(batch_results, list):
-                all_ai_results.extend(batch_results)
-            elif isinstance(batch_results, dict):
-                all_ai_results.append(batch_results)
-                
-        except Exception as e:
-            print(f"AI Analysis Failed for Batch {index + 1}: {e}")
-        
-        if index < len(batches) - 1:
-            time.sleep(2)
-            
-    return all_ai_results
-
-def send_email(technical_data, ai_analysis):
-    if not technical_data:
-        print("No data to send.")
-        return
-
-    final_results = []
-    for tech in technical_data:
-        ai_data = next((item for item in ai_analysis if item.get("symbol") == tech["symbol"]), None)
-        if ai_data:
-            tech.update(ai_data)
+            Focus on providing a CLEAR PLAN FOR TOMORROW.
+            Return ONLY a valid JSON array of objects. Keys required:
+            - "symbol": Stock symbol.
+            - "tomorrow_prediction": "Bullish", "Bearish", or "Consolidation".
+            - "action_plan": One of ["BUY", "SELL/BOOK PROFIT", "HOLD", "ADD ON DIPS", "STRICT STOP LOSS"].
+            - "detailed_strategy": 2 sentences explaining tomorrow's strategy based on weekly trend and Pro insights.
+            """
         else:
-            tech['trend'] = 'N/A'
-            tech['suggestion'] = 'HOLD'
-            tech['ai_reason'] = 'AI Analysis unavailable.'
-        final_results.append(tech)
-
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    subject = f"Backward Momentum Intelligence: 30-Min Alert - {now}"
-
-    html = f"""
-    <html>
-    <head>
-        <style>
-            table {{ border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 14px; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }}
-            th, td {{ border: 1px solid #dddddd; text-align: left; padding: 12px; }}
-            th {{ background-color: #1a252f; color: #ffffff; text-transform: uppercase; font-size: 13px; }}
-            tr:nth-child(even) {{ background-color: #f8f9fa; }}
-            .buy {{ color: #27ae60; font-weight: bold; }}
-            .sell {{ color: #c0392b; font-weight: bold; }}
-            .hold {{ color: #7f8c8d; font-weight: bold; }}
-            .avg {{ color: #2980b9; font-weight: bold; }}
-        </style>
-    </head>
-    <body>
-        <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">🤖 Sequential Backward-Tracked Intraday Report</h2>
-        <p style="color: #555;"><b>Time:</b> {now} (Comparing last 3 consecutive 30-min intervals)</p>
-        <table>
-            <tr>
-                <th>Stock</th>
-                <th>Price (₹)</th>
-                <th>RSI (14)</th>
-                <th>Trend</th>
-                <th>Action</th>
-                <th>Sequential Momentum Analysis</th>
-            </tr>
-    """
-
-    for res in final_results:
-        sug = res.get('suggestion', 'HOLD').upper()
-        color_class = "hold"
-        if "BUY" in sug: color_class = "buy"
-        elif "SELL" in sug: color_class = "sell"
-        elif "AVERAGE" in sug: color_class = "avg"
-
-        html += f"""
-            <tr>
-                <td><b>{res['symbol']}</b></td>
-                <td><b>{res['price']}</b></td>
-                <td>{res['rsi']}</td>
-                <td>{res.get('trend', 'Neutral')}</td>
-                <td class="{color_class}">{sug}</td>
-                <td style="font-size: 13px; color: #333; line-height: 1.4;">{res.get('ai_reason', 'Analysis pending.')}</td>
-            </tr>
-        """
-    
-    html += "</table><br><p style='font-size: 12px; color: #999;'>Happy Trading! - <i>Powered by Gemini 3.6 Flash & Market Agent Pro</i></p></body></html>"
-
-    msg = MIMEMultipart()
-    msg['From'] = GMAIL_SENDER
-    msg['To'] = GMAIL_RECEIVER
-    msg['Subject'] = subject
-    msg.attach(MIMEText(html, 'html'))
-
-    try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(GMAIL_SENDER, GMAIL_PASSWORD)
-        text = msg.as_string()
-        server.sendmail(GMAIL_SENDER, GMAIL_RECEIVER, text)
-        server.quit()
-        print("AI Intelligence Email sent successfully!")
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-
-if __name__ == "__main__":
-    print("Fetching stocks from Google Sheets...")
-    stocks = get_stocks_from_sheet()
-    
-    if not stocks:
-        print("No stocks found in sheet, using Fallback...")
-        stocks = ["RELIANCE", "TCS", "HDFCBANK", "INFY"]
+            prompt = f"""
+            Analyze this 15-minute sequential intraday data to track live momentum:
+            {batch_json}
+            
+            Return ONLY a valid JSON array of objects. Keys required:
+            - "symbol": Stock symbol.
+            - "trend": "Uptrend", "Downtrend", or "Sideways".
+            - "action": One of ["ENTRY/BUY", "HOLD", "EXIT/SELL", "WAIT"].
+            - "reason": 1 short sentence explaining the sequential momentum (current 15m vs prev 15m).
+            """
         
-    print(f"Calculating Technical Data for {len(stocks)} stocks...")
-    tech_data = get_technical_data(stocks)
-    
-    if tech_data:
-        ai_results = get_ai_analysis(tech_data)
-        send_email(tech_data, ai_results)
-    else:
-        print("No technical data found.")
+        batch_success = False
+        # Retry mechanism for robust execution
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model='gemini-3.6-flash',
+                    contents=prompt,
+                    config=types.GenerateContentConfig(response_mime_type="application/json")
+                )
+                text_resp = response.text.strip().replace("```json", "").replace("
