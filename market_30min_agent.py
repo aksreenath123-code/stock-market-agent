@@ -24,7 +24,7 @@ GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
 MONEYCONTROL_COOKIE = os.environ.get("MONEYCONTROL_COOKIE") 
 
-SHEET_ID = "1Voy-zrWnAbT4ICqThGLZ6tJJJPWYJ0VuFI8nC-BmBqI" 
+SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE" 
 
 def get_stocks_from_sheet():
     try:
@@ -68,6 +68,7 @@ def get_market_data(stocks, is_night_mode=False):
             stock_data = yf.Ticker(ticker)
             
             if is_night_mode:
+                # Night Mode: Daily & Weekly Data fetching (With NaN fixes)
                 df_daily = stock_data.history(period="5d", interval="1d")
                 df_weekly = stock_data.history(period="1mo", interval="1wk")
                 
@@ -91,7 +92,7 @@ def get_market_data(stocks, is_night_mode=False):
                 current_rsi = round(float(rsi_val), 2) if not pd.isna(rsi_val) else 50.0
                 
                 pro_insights = str(get_moneycontrol_pro_insights(symbol))
-                time.sleep(0.3)
+                time.sleep(0.3) # Yahoo Finance Rate limit protection
                 
                 technical_data.append({
                     "symbol": str(symbol),
@@ -103,6 +104,7 @@ def get_market_data(stocks, is_night_mode=False):
                 })
                 
             else:
+                # Intraday Mode: 15-Min Sequential Data
                 df_intraday = stock_data.history(period="2d", interval="15m")
                 if df_intraday.empty or df_intraday['Close'].isnull().all() or len(df_intraday) < 2: continue
                 
@@ -122,8 +124,9 @@ def get_market_data(stocks, is_night_mode=False):
                 rsi_val = current_candle['RSI']
                 current_rsi = round(float(rsi_val), 2) if not pd.isna(rsi_val) else 50.0
                 
+                # Token Optimization: Filter dead stocks during the day
                 is_dead_stock = abs(seq_change) < 0.1 and 48 <= current_rsi <= 52
-                time.sleep(0.2)
+                time.sleep(0.2) # Yahoo Finance Rate limit protection
                 
                 technical_data.append({
                     "symbol": str(symbol),
@@ -149,6 +152,7 @@ def get_ai_analysis(technical_data, is_night_mode=False):
         active_stocks = [s for s in technical_data if not s.get("is_dead_stock", False)]
         dead_stocks = [s for s in technical_data if s.get("is_dead_stock", False)]
         
+        # Dead stocks get automatic fallback (No API tokens wasted)
         for ds in dead_stocks:
             all_ai_results.append({
                 "symbol": ds["symbol"],
@@ -158,15 +162,18 @@ def get_ai_analysis(technical_data, is_night_mode=False):
             })
         data_to_process = active_stocks
     else:
+        # At night, we analyze everything to plan for tomorrow
         data_to_process = technical_data
 
-    batch_size = 25
+    # Output truncation ഒഴിവാക്കാൻ ബാച്ച് സൈസ് 20 ആക്കി ചുരുക്കി
+    batch_size = 20
     batches = [data_to_process[i:i + batch_size] for i in range(0, len(data_to_process), batch_size)]
     
     for index, batch in enumerate(batches):
         if not batch: continue
-        print(f"Processing Batch {index + 1} of {len(batches)}...")
+        print(f"\n--- Processing Batch {index + 1} of {len(batches)} (Size: {len(batch)} stocks) ---")
         
+        # JSON serialization fix (default=str)
         batch_json = json.dumps(batch, default=str)
         
         if is_night_mode:
@@ -194,8 +201,11 @@ def get_ai_analysis(technical_data, is_night_mode=False):
             """
         
         batch_success = False
-        for attempt in range(2):
+        max_retries = 5 # പരമാവധി 5 തവണ റീട്രൈ ചെയ്യും
+        
+        for attempt in range(1, max_retries + 1):
             try:
+                print(f"Attempt {attempt} for Batch {index + 1}...")
                 response = client.models.generate_content(
                     model='gemini-3.6-flash',
                     contents=prompt,
@@ -210,28 +220,46 @@ def get_ai_analysis(technical_data, is_night_mode=False):
                 
                 batch_results = json.loads(text_resp)
                 
+                if isinstance(batch_results, dict):
+                    batch_results = [batch_results]
+                
+                # ഡാറ്റ വാലിഡേഷൻ: നമ്മൾ അയച്ച എല്ലാ സ്റ്റോക്കുകളും AI തിരികെ തന്നിട്ടുണ്ടോ എന്ന് ഉറപ്പുവരുത്തുന്നു
+                received_symbols = [res.get("symbol") for res in batch_results if isinstance(res, dict) and "symbol" in res]
+                expected_symbols = [item["symbol"] for item in batch]
+                missing_symbols = set(expected_symbols) - set(received_symbols)
+                
+                if missing_symbols:
+                    print(f"⚠️ AI missed some symbols: {missing_symbols}. Retrying...")
+                    raise ValueError("Incomplete JSON response from AI. Missing symbols.")
+                
                 if isinstance(batch_results, list):
                     all_ai_results.extend(batch_results)
-                    batch_success = True; break
-                elif isinstance(batch_results, dict):
-                    all_ai_results.append(batch_results)
-                    batch_success = True; break
+                    batch_success = True
+                    print(f"✅ Batch {index + 1} processed successfully!")
+                    break # സക്സസ് ആയാൽ റീട്രൈ ലൂപ്പ് ബ്രേക്ക് ചെയ്യും
+                    
             except Exception as e:
-                print(f"Attempt {attempt + 1} failed for Batch {index + 1}: {e}")
-                time.sleep(5)
+                print(f"❌ Attempt {attempt} failed: {e}")
+                if attempt < max_retries:
+                    wait_time = 20 * attempt # 20, 40, 60, 80 സെക്കൻഡുകൾ വീതം ഗ്യാപ്പ് കൂട്ടുന്നു
+                    print(f"⏳ Waiting {wait_time} seconds before retrying...")
+                    time.sleep(wait_time)
         
+        # Independent Batch Accumulation (If AI fails completely, we still provide structured data)
         if not batch_success:
-            print(f"⚠️ Batch {index + 1} failed after retries. Applying fallback...")
+            print(f"⚠️ Batch {index + 1} completely failed after {max_retries} retries. Applying fallback...")
             for item in batch:
                 if is_night_mode:
                     trend = "Bullish" if item.get('daily_change', 0) > 0 else "Bearish"
                     all_ai_results.append({"symbol": item["symbol"], "tomorrow_prediction": trend, "action_plan": "HOLD", "detailed_strategy": f"Daily change {item.get('daily_change', 0)}%. Technical data indicates holding current positions."})
                 else:
                     trend = "Uptrend" if item.get('sequential_change', 0) > 0 else "Downtrend"
-                    all_ai_results.append({"symbol": item["symbol"], "trend": trend, "action": "WAIT", "reason": f"Sequential change {item.get('sequential_change', 0)}%."})
+                    all_ai_results.append({"symbol": item["symbol"], "trend": trend, "action": "WAIT", "reason": f"Sequential change {item.get('sequential_change', 0)}%. Independent evaluation applied."})
         
+        # ഓരോ ബാച്ചിനും ഇടയിലുള്ള നിർബന്ധിത ഗ്യാപ്പ് (1 മിനിറ്റ് 15 സെക്കൻഡ്) റേറ്റ് ലിമിറ്റ് ഒഴിവാക്കാൻ
         if index < len(batches) - 1:
-            time.sleep(3)
+            print(f"⏸️ Waiting 75 seconds before sending the next batch to avoid API rate limits...")
+            time.sleep(75)
             
     return all_ai_results
 
@@ -334,6 +362,7 @@ if __name__ == "__main__":
     if not stocks: stocks = ["RELIANCE", "TCS"]
         
     current_hour = datetime.now().hour
+    # UTC സമയം 14 അല്ലെങ്കിൽ അതിന് മുകളിലാണെങ്കിൽ (അതായത് IST 7:30 PM ന് ശേഷം) നൈറ്റ് മോഡ് ആക്റ്റീവ് ആകും
     is_night_mode = current_hour >= 14 
     
     print(f"Executing Mode: {'Night Consolidated Planning' if is_night_mode else 'Intraday Sequential Live'}")
