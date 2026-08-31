@@ -24,8 +24,7 @@ install_missing_packages()
 
 from google import genai
 
-# ==================== 2. API കോൺഫിഗറേഷൻ (പുതിയ വേരിയബിൾ) ====================
-# ഇവിടെ പുതിയ വേരിയബിൾ ആയ IPO_GEMINI_API_KEY നൽകിയിരിക്കുന്നു
+# ==================== 2. API കോൺഫിഗറേഷൻ ====================
 GEMINI_API_KEY = os.getenv("IPO_GEMINI_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
@@ -85,29 +84,24 @@ def analyze_ipo_data(raw_data):
     
     🚨 കർശനമായ മാനദണ്ഡങ്ങൾ (CRITICAL RULES):
     1. **VALIDITY CHECK (100% ഗ്യാരണ്ടി):** ക്ലോസ് ചെയ്യാത്ത (Currently Open) ഐപിഒകളും, വരാനിരിക്കുന്ന (Upcoming) ഐപിഒകളും മാത്രമേ റിപ്പോർട്ടിൽ ഉൾപ്പെടുത്താവൂ. ക്ലോസിംഗ് തീയതി കഴിഞ്ഞവ പൂർണ്ണമായും ഒഴിവാക്കുക!
-    2. **GMP TREND:** ഡാറ്റയിലുള്ള മുൻ ദിവസങ്ങളിലെ GMP പരിശോധിച്ച് ട്രെൻഡ് (ഉയരുന്നതാണോ, കുറയുന്നതാണോ, സ്ഥിരമാണോ) എന്ന് വ്യക്തമാക്കുക. പോസിറ്റീവ്/നെഗറ്റീവ് ട്രെൻഡ് സൂചിപ്പിക്കുക.
-    3. **SUBSCRIPTION DETAILS:** ലഭ്യമായ സബ്സ്ക്രിപ്ഷൻ ഡാറ്റ (QIB, NII, Retail) എത്ര മടങ്ങ് എന്ന് ചേർക്കുക.
-    4. **AI STRATEGY (>15% GAIN RULE):** 
-       - ലിസ്റ്റിംഗ് ഗെയിൻ 15%-ന് മുകളിൽ പ്രതീക്ഷിക്കുന്നുണ്ടെങ്കിൽ, കൂടാതെ GMP ട്രെൻഡ് പോസിറ്റീവ് ആണെങ്കിൽ മാത്രം "🟢 APPLY" എന്ന് നിർദ്ദേശിക്കുക.
-       - 15%-ൽ താഴെയാണെങ്കിലോ, ട്രെൻഡ് നെഗറ്റീവ് ആണെങ്കിലോ "🔴 AVOID" എന്ന് നിർദ്ദേശിക്കുക.
-       - നിങ്ങളുടെ തീരുമാനത്തിനുള്ള കാരണം വ്യക്തമാക്കുക.
+    2. **GMP TREND:** ഡാറ്റയിലുള്ള മുൻ ദിവസങ്ങളിലെ GMP പരിശോധിച്ച് ട്രെൻഡ് (ഉയരുന്നതാണോ, കുറയുന്നതാണോ, സ്ഥിരമാണോ) എന്ന് വ്യക്തമാക്കുക. 
+    3. **AI STRATEGY (>15% GAIN RULE):** ലിസ്റ്റിംഗ് ഗെയിൻ 15%-ന് മുകളിൽ പ്രതീക്ഷിക്കുന്നുണ്ടെങ്കിൽ, കൂടാതെ GMP ട്രെൻഡ് പോസിറ്റീവ് ആണെങ്കിൽ മാത്രം "🟢 APPLY" എന്ന് നിർദ്ദേശിക്കുക. അല്ലെങ്കിൽ "🔴 AVOID" എന്ന് നിർദ്ദേശിക്കുക. കാരണം വ്യക്തമാക്കുക.
     
-    ഓരോ ഐപിഒയ്ക്കും ഈ ഫോർമാറ്റിൽ വിവരങ്ങൾ നൽകുക:
-    - 📌 IPO Name (Mainboard / SME)
-    - 📅 Dates (Open to Close)
-    - 💰 Current GMP & Est. Listing Price
-    - 📈 GMP Trend Analysis
-    - 📊 Subscription Status
-    - 🤖 AI Recommendation (APPLY or AVOID + Reason based on 15% rule)
-
+    📋 OUTPUT FORMAT (CRITICAL):
+    ഒരു Excel ഷീറ്റ് പോലെ തോന്നിക്കുന്ന മനോഹരമായ, പ്രൊഫഷണലായ ഒരു **HTML ടേബിൾ** (Spreadsheet style) രൂപത്തിൽ മാത്രം ഔട്ട്പുട്ട് നൽകുക. ടേബിളിൽ താഴെ പറയുന്ന 6 കോളങ്ങൾ നിർബന്ധമായും ഉണ്ടായിരിക്കണം:
+    
+    | IPO Name | Dates (Start - End) | GMP & Listing Gain (%) | Subscription | GMP Trend | AI Analysis & Recommendation |
+    
+    - ബോർഡറുകളോട് കൂടിയ (with solid borders and padded cells) ഇരുണ്ട നിറത്തിലുള്ള (Dark mode friendly) ആധുനിക HTML CSS സ്റ്റൈൽ ടേബിളിനായി ഉപയോഗിക്കുക.
+    - തലക്കെട്ടുകൾ (Headers) ആകർഷകമായിരിക്കണം.
+    - കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം മറുപടി നൽകുക. കാർഡുകൾ (Cards) ഉപയോഗിക്കരുത്.
+    
     ഡാറ്റ:
     {raw_data}
-    
-    Modern Dark HTML കാർഡുകൾ ഉപയോഗിച്ച് മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക. കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം മറുപടി നൽകുക. ഏറ്റവും മികച്ചവ ആദ്യം നൽകുക.
     """
     
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🚀 Advanced IPO Analysis: GMP Trends, Subscriptions & 15% Strategy", response.text.replace("```html", "").replace("```", "").strip()
+    return "📊 IPO Analysis: Consolidated Spreadsheet Report", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 5. ഇമെയിൽ അയക്കൽ ====================
 def send_email(subject, html_content):
@@ -116,7 +110,27 @@ def send_email(subject, html_content):
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
     msg["Subject"] = subject
-    msg.attach(MIMEText(html_content, "html", "utf-8"))
+    
+    # HTML ടേബിൾ ശരിയായി കാണിക്കാൻ ഇത് സഹായിക്കും
+    wrapped_html = f"""
+    <html>
+    <head>
+    <style>
+      table {{ border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }}
+      th, td {{ border: 1px solid #dddddd; text-align: left; padding: 12px; }}
+      th {{ background-color: #2c3e50; color: white; }}
+      tr:nth-child(even) {{ background-color: #f2f2f2; color: #333; }}
+      tr:nth-child(odd) {{ background-color: #ffffff; color: #333; }}
+    </style>
+    </head>
+    <body>
+    <h2 style='color: #2c3e50;'>IPO Analysis Report (Open & Upcoming)</h2>
+    {html_content}
+    </body>
+    </html>
+    """
+    
+    msg.attach(MIMEText(wrapped_html, "html", "utf-8"))
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
