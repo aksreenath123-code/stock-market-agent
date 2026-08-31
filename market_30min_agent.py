@@ -24,12 +24,12 @@ GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
 MONEYCONTROL_COOKIE = os.environ.get("MONEYCONTROL_COOKIE") 
 
-SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE" 
+SHEET_ID = "1Voy-zrWnAbT4ICqThGLZ6tJJJPWYJ0VuFI8nC-BmBqI" 
 
 def get_stocks_from_sheet():
     try:
         creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        scope = ["[https://spreadsheets.google.com/feeds](https://spreadsheets.google.com/feeds)", "[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         sheet = client.open_by_key(SHEET_ID).sheet1
@@ -42,7 +42,7 @@ def get_stocks_from_sheet():
 
 def get_moneycontrol_pro_insights(symbol):
     try:
-        search_url = f"https://www.moneycontrol.com/mccode/common/search_autocomplete_new.php?queryString={symbol}"
+        search_url = f"[https://www.moneycontrol.com/mccode/common/search_autocomplete_new.php?queryString=](https://www.moneycontrol.com/mccode/common/search_autocomplete_new.php?queryString=){symbol}"
         headers = {'User-Agent': 'Mozilla/5.0', 'Cookie': MONEYCONTROL_COOKIE if MONEYCONTROL_COOKIE else ''}
         response = requests.get(search_url, headers=headers, timeout=4)
         if response.status_code == 200:
@@ -68,7 +68,6 @@ def get_market_data(stocks, is_night_mode=False):
             stock_data = yf.Ticker(ticker)
             
             if is_night_mode:
-                # Night Mode: Daily & Weekly Data fetching (With NaN fixes)
                 df_daily = stock_data.history(period="5d", interval="1d")
                 df_weekly = stock_data.history(period="1mo", interval="1wk")
                 
@@ -92,7 +91,7 @@ def get_market_data(stocks, is_night_mode=False):
                 current_rsi = round(float(rsi_val), 2) if not pd.isna(rsi_val) else 50.0
                 
                 pro_insights = str(get_moneycontrol_pro_insights(symbol))
-                time.sleep(0.3) # Rate limit protection
+                time.sleep(0.3)
                 
                 technical_data.append({
                     "symbol": str(symbol),
@@ -104,7 +103,6 @@ def get_market_data(stocks, is_night_mode=False):
                 })
                 
             else:
-                # Intraday Mode: 15-Min Sequential Data
                 df_intraday = stock_data.history(period="2d", interval="15m")
                 if df_intraday.empty or df_intraday['Close'].isnull().all() or len(df_intraday) < 2: continue
                 
@@ -124,7 +122,6 @@ def get_market_data(stocks, is_night_mode=False):
                 rsi_val = current_candle['RSI']
                 current_rsi = round(float(rsi_val), 2) if not pd.isna(rsi_val) else 50.0
                 
-                # Token Optimization: Filter dead stocks during the day
                 is_dead_stock = abs(seq_change) < 0.1 and 48 <= current_rsi <= 52
                 time.sleep(0.2)
                 
@@ -148,12 +145,10 @@ def get_ai_analysis(technical_data, is_night_mode=False):
     client = genai.Client(api_key=GEMINI_API_KEY)
     all_ai_results = []
     
-    # Token Optimization Implementation
     if not is_night_mode:
         active_stocks = [s for s in technical_data if not s.get("is_dead_stock", False)]
         dead_stocks = [s for s in technical_data if s.get("is_dead_stock", False)]
         
-        # Dead stocks get automatic fallback (No API tokens wasted)
         for ds in dead_stocks:
             all_ai_results.append({
                 "symbol": ds["symbol"],
@@ -163,10 +158,8 @@ def get_ai_analysis(technical_data, is_night_mode=False):
             })
         data_to_process = active_stocks
     else:
-        # At night, we analyze everything to plan for tomorrow
         data_to_process = technical_data
 
-    # Batching to avoid Timeout & Rate limits
     batch_size = 25
     batches = [data_to_process[i:i + batch_size] for i in range(0, len(data_to_process), batch_size)]
     
@@ -174,7 +167,6 @@ def get_ai_analysis(technical_data, is_night_mode=False):
         if not batch: continue
         print(f"Processing Batch {index + 1} of {len(batches)}...")
         
-        # JSON serialization fix (default=str)
         batch_json = json.dumps(batch, default=str)
         
         if is_night_mode:
@@ -202,7 +194,6 @@ def get_ai_analysis(technical_data, is_night_mode=False):
             """
         
         batch_success = False
-        # Retry mechanism for robust execution
         for attempt in range(2):
             try:
                 response = client.models.generate_content(
@@ -210,4 +201,5 @@ def get_ai_analysis(technical_data, is_night_mode=False):
                     contents=prompt,
                     config=types.GenerateContentConfig(response_mime_type="application/json")
                 )
-                text_resp = response.text.strip().replace("```json", "").replace("
+                # ഈ വരിയിലാണ് എറർ വന്നിരുന്നത്, ഇത് ഇപ്പോൾ കൃത്യമായി ഫോർമാറ്റ് ചെയ്തിട്ടുണ്ട്
+                text_resp = response.text.strip().replace("
