@@ -29,7 +29,7 @@ SHEET_ID = "1Voy-zrWnAbT4ICqThGLZ6tJJJPWYJ0VuFI8nC-BmBqI"
 def get_stocks_from_sheet():
     try:
         creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
-        scope = ["[https://spreadsheets.google.com/feeds](https://spreadsheets.google.com/feeds)", "[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)"]
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         sheet = client.open_by_key(SHEET_ID).sheet1
@@ -42,7 +42,7 @@ def get_stocks_from_sheet():
 
 def get_moneycontrol_pro_insights(symbol):
     try:
-        search_url = f"[https://www.moneycontrol.com/mccode/common/search_autocomplete_new.php?queryString=](https://www.moneycontrol.com/mccode/common/search_autocomplete_new.php?queryString=){symbol}"
+        search_url = f"https://www.moneycontrol.com/mccode/common/search_autocomplete_new.php?queryString={symbol}"
         headers = {'User-Agent': 'Mozilla/5.0', 'Cookie': MONEYCONTROL_COOKIE if MONEYCONTROL_COOKIE else ''}
         response = requests.get(search_url, headers=headers, timeout=4)
         if response.status_code == 200:
@@ -201,5 +201,146 @@ def get_ai_analysis(technical_data, is_night_mode=False):
                     contents=prompt,
                     config=types.GenerateContentConfig(response_mime_type="application/json")
                 )
-                # ഈ വരിയിലാണ് എറർ വന്നിരുന്നത്, ഇത് ഇപ്പോൾ കൃത്യമായി ഫോർമാറ്റ് ചെയ്തിട്ടുണ്ട്
-                text_resp = response.text.strip().replace("
+                
+                # കോപ്പി-പേസ്റ്റ് എററുകൾ ഒഴിവാക്കാൻ സുരക്ഷിതമായി റീപ്ലേസ് ചെയ്യുന്നു
+                text_resp = response.text.strip()
+                text_resp = text_resp.replace('`' * 3 + 'json', '')
+                text_resp = text_resp.replace('`' * 3, '')
+                text_resp = text_resp.strip()
+                
+                batch_results = json.loads(text_resp)
+                
+                if isinstance(batch_results, list):
+                    all_ai_results.extend(batch_results)
+                    batch_success = True; break
+                elif isinstance(batch_results, dict):
+                    all_ai_results.append(batch_results)
+                    batch_success = True; break
+            except Exception as e:
+                print(f"Attempt {attempt + 1} failed for Batch {index + 1}: {e}")
+                time.sleep(5)
+        
+        if not batch_success:
+            print(f"⚠️ Batch {index + 1} failed after retries. Applying fallback...")
+            for item in batch:
+                if is_night_mode:
+                    trend = "Bullish" if item.get('daily_change', 0) > 0 else "Bearish"
+                    all_ai_results.append({"symbol": item["symbol"], "tomorrow_prediction": trend, "action_plan": "HOLD", "detailed_strategy": f"Daily change {item.get('daily_change', 0)}%. Technical data indicates holding current positions."})
+                else:
+                    trend = "Uptrend" if item.get('sequential_change', 0) > 0 else "Downtrend"
+                    all_ai_results.append({"symbol": item["symbol"], "trend": trend, "action": "WAIT", "reason": f"Sequential change {item.get('sequential_change', 0)}%."})
+        
+        if index < len(batches) - 1:
+            time.sleep(3)
+            
+    return all_ai_results
+
+def send_email(technical_data, ai_analysis, is_night_mode=False):
+    if not technical_data: 
+        print("No data to send.")
+        return
+    
+    final_results = []
+    for tech in technical_data:
+        ai_data = next((item for item in ai_analysis if item.get("symbol") == tech["symbol"]), None)
+        if ai_data: tech.update(ai_data)
+        final_results.append(tech)
+
+    now = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    
+    if is_night_mode:
+        subject = f"🌙 MASTER PLAN FOR TOMORROW: Consolidated Pro Report - {now}"
+        html = f"""
+        <html><head><style>
+            body {{ font-family: Arial, sans-serif; background-color: #f4f6f9; padding: 20px; }}
+            table {{ border-collapse: collapse; width: 100%; font-size: 13px; background: #fff; }}
+            th, td {{ border: 1px solid #ddd; text-align: left; padding: 10px; }}
+            th {{ background-color: #1a252f; color: #fff; text-transform: uppercase; }}
+            .buy {{ color: #27ae60; font-weight: bold; }} .sell {{ color: #c0392b; font-weight: bold; }} .hold {{ color: #2980b9; font-weight: bold; }}
+            .pro {{ font-size: 11px; color: #555; background: #eee; padding: 5px; margin-top: 5px; border-radius: 3px; }}
+        </style></head>
+        <body>
+            <h2 style="color: #2c3e50;">🌙 Tomorrow's Action Plan & Consolidated Report</h2>
+            <p><b>Time:</b> {now} | Daily & Weekly Trends + Moneycontrol Pro</p>
+            <table>
+                <tr><th>Stock</th><th>Price (₹)</th><th>Daily/Wk Chg</th><th>Prediction</th><th>Action Plan</th><th>Strategy & Pro Insights</th></tr>
+        """
+        for res in final_results:
+            act = res.get('action_plan', 'HOLD').upper()
+            color = "buy" if "BUY" in act or "ADD" in act else ("sell" if "SELL" in act or "PROFIT" in act or "LOSS" in act else "hold")
+            html += f"""
+                <tr>
+                    <td><b>{res['symbol']}</b></td>
+                    <td><b>{res['price']}</b></td>
+                    <td>{res.get('daily_change', 0)}% / {res.get('weekly_change', 0)}%</td>
+                    <td>{res.get('tomorrow_prediction', 'Neutral')}</td>
+                    <td class="{color}">{act}</td>
+                    <td>
+                        {res.get('detailed_strategy', 'Analysis pending.')}
+                        <div class="pro"><b>Pro:</b> {res.get('pro_insights', 'N/A')}</div>
+                    </td>
+                </tr>
+            """
+    else:
+        subject = f"⚡ INTRADAY LIVE: Sequential Momentum - {now}"
+        html = f"""
+        <html><head><style>
+            body {{ font-family: Arial, sans-serif; background-color: #f4f6f9; padding: 20px; }}
+            table {{ border-collapse: collapse; width: 100%; font-size: 13px; background: #fff; }}
+            th, td {{ border: 1px solid #ddd; text-align: left; padding: 10px; }}
+            th {{ background-color: #004d40; color: #fff; text-transform: uppercase; }}
+            .buy {{ color: #2e7d32; font-weight: bold; }} .sell {{ color: #c62828; font-weight: bold; }} .hold {{ color: #7f8c8d; font-weight: bold; }}
+        </style></head>
+        <body>
+            <h2 style="color: #004d40;">⚡ Live Intraday Tracker</h2>
+            <p><b>Time:</b> {now} | 15-Minute Sequential Comparison</p>
+            <table>
+                <tr><th>Stock</th><th>Live Price (₹)</th><th>Seq Momentum</th><th>Trend</th><th>Action</th><th>AI Live Update</th></tr>
+        """
+        for res in final_results:
+            act = res.get('action', 'WAIT').upper()
+            color = "buy" if "BUY" in act or "ENTRY" in act else ("sell" if "SELL" in act or "EXIT" in act else "hold")
+            html += f"""
+                <tr>
+                    <td><b>{res['symbol']}</b></td>
+                    <td><b>{res['price']}</b></td>
+                    <td>{res.get('sequential_change', 0)}%</td>
+                    <td>{res.get('trend', 'Sideways')}</td>
+                    <td class="{color}">{act}</td>
+                    <td>{res.get('reason', 'Analysis pending.')}</td>
+                </tr>
+            """
+            
+    html += "</table></body></html>"
+
+    msg = MIMEMultipart()
+    msg['From'] = GMAIL_SENDER
+    msg['To'] = GMAIL_RECEIVER
+    msg['Subject'] = subject
+    msg.attach(MIMEText(html, 'html'))
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(GMAIL_SENDER, GMAIL_PASSWORD)
+        server.sendmail(GMAIL_SENDER, GMAIL_RECEIVER, msg.as_string())
+        server.quit()
+        print(f"Email sent successfully for {'Night Mode' if is_night_mode else 'Intraday Mode'}!")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
+if __name__ == "__main__":
+    stocks = get_stocks_from_sheet()
+    if not stocks: stocks = ["RELIANCE", "TCS"]
+        
+    current_hour = datetime.now().hour
+    is_night_mode = current_hour >= 14 
+    
+    print(f"Executing Mode: {'Night Consolidated Planning' if is_night_mode else 'Intraday Sequential Live'}")
+    
+    tech_data = get_market_data(stocks, is_night_mode=is_night_mode)
+    if tech_data:
+        ai_results = get_ai_analysis(tech_data, is_night_mode=is_night_mode)
+        send_email(tech_data, ai_results, is_night_mode=is_night_mode)
+    else:
+        print("No valid technical data found to process.")
