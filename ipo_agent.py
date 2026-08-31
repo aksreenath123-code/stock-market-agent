@@ -4,8 +4,8 @@ import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import requests
-from bs4 import BeautifulSoup
+import re
+import time
 from datetime import datetime, timedelta
 
 # ==================== 1. ലൈബ്രറി ഇൻസ്റ്റാളേഷൻ ====================
@@ -22,6 +22,8 @@ def install_missing_packages():
 
 install_missing_packages()
 
+import requests
+from bs4 import BeautifulSoup
 from google import genai
 
 # ==================== 2. API കോൺഫിഗറേഷൻ ====================
@@ -32,18 +34,44 @@ RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ==================== 3. SMART FILTERING & IN-DEPTH SCRAPER ====================
+# ==================== 3. INTELLIGENT SCRAPER & RETRY LOGIC ====================
+def clean_url(url_str):
+    """കോപ്പി-പേസ്റ്റ് ചെയ്യുമ്പോൾ വരുന്ന ബ്രാക്കറ്റുകളും മറ്റ് അനാവശ്യ ചിഹ്നങ്ങളും ഒഴിവാക്കുന്നു"""
+    cleaned = re.sub(r'^\[.*?\]\((.*?)\)$', r'\1', str(url_str).strip())
+    cleaned = cleaned.replace('[', '').replace(']', '').replace('(', '').replace(')', '')
+    cleaned = cleaned.replace("'", "").replace('"', '').strip()
+    return cleaned
+
+def fetch_with_retry(url, retries=3):
+    """നെറ്റ്‌വർക്ക് പ്രശ്നങ്ങൾ മറികടക്കാൻ 3 തവണ റീട്രൈ ചെയ്യുന്നു"""
+    clean_u = clean_url(url)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    for attempt in range(retries):
+        try:
+            res = requests.get(clean_u, headers=headers, timeout=15)
+            if res.status_code == 200:
+                return res.text
+        except Exception as e:
+            print(f"⚠️ Attempt {attempt+1} failed for {clean_u}: {e}")
+            time.sleep(2)
+    return None
+
 def get_active_and_upcoming_links():
     print("🔍 സ്റ്റെപ്പ് 1: ഐപിഒ ലിങ്കുകൾ കണ്ടെത്തുന്നു...")
-    url = "[https://www.investorgain.com/report/ipo-gmp-live/331/](https://www.investorgain.com/report/ipo-gmp-live/331/)"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    url = "https://www.investorgain.com/report/ipo-gmp-live/331/"
     
     active_links = []
     all_links = [] 
     
+    html_content = fetch_with_retry(url)
+    if not html_content:
+        print("❌ മെയിൻ പേജ് സ്ക്രാപ്പിംഗ് പരാജയപ്പെട്ടു.")
+        return []
+
     try:
-        res = requests.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(res.text, "html.parser")
+        soup = BeautifulSoup(html_content, "html.parser")
         table = soup.find('table')
         if not table: return []
         
@@ -64,7 +92,9 @@ def get_active_and_upcoming_links():
                 
             link = a_tag['href']
             if not link.startswith("http"):
-                link = "[https://www.investorgain.com](https://www.investorgain.com)" + link
+                link = "https://www.investorgain.com" + link
+                
+            link = clean_url(link)
                 
             if link not in all_links:
                 all_links.append(link)
@@ -89,7 +119,7 @@ def get_active_and_upcoming_links():
                 active_links.append(link)
                 
     except Exception as e:
-        print(f"❌ മെയിൻ പേജ് അനാലിസിസ് എറർ: {e}")
+        print(f"❌ ഡാറ്റ പാഴ്സിങ് എറർ: {e}")
         
     if not active_links and all_links:
         print("⚠️ നിലവിൽ ഓപ്പൺ ആയ ഐപിഒകൾ കണ്ടെത്താനായില്ല. അവസാനത്തെ 3 ഐപിഒകൾ എടുക്കുന്നു (Fallback)...")
@@ -99,26 +129,35 @@ def get_active_and_upcoming_links():
 
 def fetch_in_depth_ipo_data():
     target_links = get_active_and_upcoming_links()
+    ipo_data = []
     
+    # അഥവാ ലിങ്കുകൾ കിട്ടിയില്ലെങ്കിൽ ബാക്കപ്പ് ആയി ചിറ്റോർഗഡിൽ നിന്ന് ഡാറ്റ എടുക്കുന്നു (Intelligent Fallback)
     if not target_links:
-        print("❌ ഡാറ്റയൊന്നും കണ്ടെത്താനായില്ല.")
-        return ""
+        print("⚠️ ഡീപ് ലിങ്കുകൾ കിട്ടിയില്ല. ബാക്കപ്പ് ഡാറ്റ ഉപയോഗിക്കുന്നു...")
+        backup_html = fetch_with_retry("https://www.chittorgarh.com/")
+        if backup_html:
+            b_soup = BeautifulSoup(backup_html, "html.parser")
+            b_data = "--- Fallback Main Data ---\n"
+            for tb in b_soup.find_all('table')[:2]: 
+                for tr in tb.find_all('tr'):
+                    b_data += " | ".join([td.get_text(strip=True) for td in tr.find_all(['th', 'td'])]) + "\n"
+            ipo_data.append(b_data[:5000])
+        return "\n\n".join(ipo_data)
         
     print(f"🎯 {len(target_links)} ഐപിഒകൾ കണ്ടെത്തി. സ്റ്റെപ്പ് 2: ഇൻഡെപ്ത് സ്ക്രാപ്പിംഗ് ആരംഭിക്കുന്നു...")
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-    ipo_data = []
     
     for link in target_links:
         try:
-            r = requests.get(link, headers=headers, timeout=15)
-            ip_soup = BeautifulSoup(r.text, "html.parser")
+            ip_html = fetch_with_retry(link)
+            if not ip_html: continue
             
+            ip_soup = BeautifulSoup(ip_html, "html.parser")
             details = f"--- Detailed Data for {link} ---\n"
             for tb in ip_soup.find_all('table')[:6]: 
                 for tr in tb.find_all('tr'):
                     details += " | ".join([td.get_text(strip=True) for td in tr.find_all(['th', 'td'])]) + "\n"
             ipo_data.append(details[:4000])
-        except Exception as e:
+        except Exception:
             pass
             
     return "\n\n".join(ipo_data)
@@ -151,7 +190,7 @@ def analyze_ipo_data(raw_data):
     """
     
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "📊 IPO Analysis: Scraped Report (Active/Recent)", response.text.replace("```html", "").replace("```", "").strip()
+    return "📊 IPO Analysis: Intelligent Scraped Report", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 5. ഇമെയിൽ അയക്കൽ ====================
 def send_email(subject, html_content):
@@ -177,7 +216,7 @@ def send_email(subject, html_content):
     </head>
     <body>
     <h2 style='color: #2c3e50; margin-bottom: 5px;'>🎯 IPO Analysis Report</h2>
-    <p style='color: #7f8c8d; font-size: 13px; margin-bottom: 20px;'>* Reports Active & Upcoming IPOs. If none are open, recent IPOs are shown as a fallback.</p>
+    <p style='color: #7f8c8d; font-size: 13px; margin-bottom: 20px;'>* Features auto-cleaning, smart retries, and fallback logic for uninterrupted data fetching.</p>
     {html_content}
     </body>
     </html>
