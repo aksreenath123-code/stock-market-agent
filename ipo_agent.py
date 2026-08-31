@@ -24,8 +24,9 @@ install_missing_packages()
 
 from google import genai
 
-# ==================== 2. API കോൺഫിഗറേഷൻ ====================
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# ==================== 2. API കോൺഫിഗറേഷൻ (പുതിയ വേരിയബിൾ) ====================
+# ഇവിടെ പുതിയ വേരിയബിൾ ആയ IPO_GEMINI_API_KEY നൽകിയിരിക്കുന്നു
+GEMINI_API_KEY = os.getenv("IPO_GEMINI_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
@@ -52,16 +53,15 @@ def fetch_in_depth_ipo_data():
             if res.status_code == 200:
                 soup = BeautifulSoup(res.text, "html.parser")
                 
-                # ഡെപ്ത് ഡാറ്റയ്ക്കായി വെബ്സൈറ്റിലെ പ്രധാന ടേബിളുകൾ എക്സ്ട്രാക്ട് ചെയ്യുന്നു
                 tables = soup.find_all('table')
                 page_data = ""
-                for table in tables[:4]: # ആദ്യത്തെ 4 പ്രധാന ടേബിളുകൾ എടുക്കുന്നു (GMP & Subscription)
+                for table in tables[:4]:
                     for row in table.find_all('tr'):
                         cols = [col.get_text(strip=True) for col in row.find_all(['th', 'td'])]
                         if cols:
                             page_data += " | ".join(cols) + "\n"
                 
-                if not page_data: # ടേബിൾ കിട്ടിയില്ലെങ്കിൽ പാരഗ്രാഫുകൾ എടുക്കുന്നു
+                if not page_data:
                     page_data = soup.get_text(separator=' | ', strip=True)[:15000]
                     
                 ipo_data.append(f"Source URL: {url}\nData:\n{page_data[:20000]}\n{'-'*50}")
@@ -106,7 +106,6 @@ def analyze_ipo_data(raw_data):
     Modern Dark HTML കാർഡുകൾ ഉപയോഗിച്ച് മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക. കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം മറുപടി നൽകുക. ഏറ്റവും മികച്ചവ ആദ്യം നൽകുക.
     """
     
-    # മോഡൽ നെയിം നിങ്ങളുടെ മുൻ ഏജന്റുകളിലെപ്പോലെ gemini-3.6-flash ആക്കി അപ്ഡേറ്റ് ചെയ്തു
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
     return "🚀 Advanced IPO Analysis: GMP Trends, Subscriptions & 15% Strategy", response.text.replace("```html", "").replace("```", "").strip()
 
