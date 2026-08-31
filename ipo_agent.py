@@ -35,11 +35,11 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # ==================== 3. SMART FILTERING & IN-DEPTH SCRAPER ====================
 def get_active_and_upcoming_links():
     print("🔍 സ്റ്റെപ്പ് 1: ഐപിഒ ലിങ്കുകൾ കണ്ടെത്തുന്നു...")
-    url = "https://www.investorgain.com/report/ipo-gmp-live/331/"
+    url = "[https://www.investorgain.com/report/ipo-gmp-live/331/](https://www.investorgain.com/report/ipo-gmp-live/331/)"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     
     active_links = []
-    all_links = [] # Fallback-ന് വേണ്ടി എല്ലാ ലിങ്കുകളും സേവ് ചെയ്യുന്നു
+    all_links = [] 
     
     try:
         res = requests.get(url, headers=headers, timeout=15)
@@ -58,14 +58,13 @@ def get_active_and_upcoming_links():
         ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
         
         for row in table.find_all('tr')[1:]:
-            # റോയിലെ എവിടെയെങ്കിലും ലിങ്ക് ഉണ്ടോ എന്ന് പരിശോധിക്കുന്നു (കൂടുതൽ സുരക്ഷിതം)
             a_tag = row.find('a')
             if not a_tag or 'href' not in a_tag.attrs:
                 continue
                 
             link = a_tag['href']
             if not link.startswith("http"):
-                link = "https://www.investorgain.com" + link
+                link = "[https://www.investorgain.com](https://www.investorgain.com)" + link
                 
             if link not in all_links:
                 all_links.append(link)
@@ -78,12 +77,10 @@ def get_active_and_upcoming_links():
                     is_active = True
                 else:
                     try:
-                        # തീയതി ഫോർമാറ്റ് "31 Aug" ആണെങ്കിൽ അത് പാഴ്സ് ചെയ്യാൻ ശ്രമിക്കുന്നു
                         parsed_date = datetime.strptime(f"{close_date_str} {ist_now.year}", "%d %b %Y")
                         if parsed_date.date() >= ist_now.date():
                             is_active = True
                     except:
-                        # പാഴ്സിങ് ഫെയിൽ ആയാലും സേഫ്റ്റിക്ക് വേണ്ടി ആഡ് ചെയ്യുന്നു
                         is_active = True 
             else:
                 is_active = True
@@ -94,12 +91,11 @@ def get_active_and_upcoming_links():
     except Exception as e:
         print(f"❌ മെയിൻ പേജ് അനാലിസിസ് എറർ: {e}")
         
-    # ഫിൽറ്റർ ചെയ്തപ്പോൾ ഒന്നുമില്ലെങ്കിൽ, ഏറ്റവും പുതിയ 3 ലിങ്കുകൾ (Fallback) എടുക്കുന്നു
     if not active_links and all_links:
         print("⚠️ നിലവിൽ ഓപ്പൺ ആയ ഐപിഒകൾ കണ്ടെത്താനായില്ല. അവസാനത്തെ 3 ഐപിഒകൾ എടുക്കുന്നു (Fallback)...")
         return all_links[:3]
         
-    return active_links[:10] # പരമാവധി 10 എണ്ണം മാത്രം
+    return active_links[:10] 
 
 def fetch_in_depth_ipo_data():
     target_links = get_active_and_upcoming_links()
@@ -155,4 +151,53 @@ def analyze_ipo_data(raw_data):
     """
     
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "📊 IPO Analysis: Scraped Report (Active/Recent)", response.text.replace("```html", "").replace("
+    return "📊 IPO Analysis: Scraped Report (Active/Recent)", response.text.replace("```html", "").replace("```", "").strip()
+
+# ==================== 5. ഇമെയിൽ അയക്കൽ ====================
+def send_email(subject, html_content):
+    print("📧 സ്റ്റെപ്പ് 4: ഇമെയിൽ അയക്കുന്നു...")
+    msg = MIMEMultipart("alternative")
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECEIVER_EMAIL
+    msg["Subject"] = subject
+    
+    wrapped_html = f"""
+    <html>
+    <head>
+    <style>
+      table {{ border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 14px; }}
+      th, td {{ border: 1px solid #dddddd; text-align: left; padding: 12px; vertical-align: top; line-height: 1.5; }}
+      th {{ background-color: #2c3e50; color: white; }}
+      tr:nth-child(even) {{ background-color: #f2f2f2; color: #333; }}
+      tr:nth-child(odd) {{ background-color: #ffffff; color: #333; }}
+      ul {{ margin-top: 8px; margin-bottom: 0px; padding-left: 20px; color: #555; font-size: 13px; }}
+      .apply {{ color: #27ae60; font-weight: bold; }}
+      .avoid {{ color: #c0392b; font-weight: bold; }}
+    </style>
+    </head>
+    <body>
+    <h2 style='color: #2c3e50; margin-bottom: 5px;'>🎯 IPO Analysis Report</h2>
+    <p style='color: #7f8c8d; font-size: 13px; margin-bottom: 20px;'>* Reports Active & Upcoming IPOs. If none are open, recent IPOs are shown as a fallback.</p>
+    {html_content}
+    </body>
+    </html>
+    """
+    
+    msg.attach(MIMEText(wrapped_html, "html", "utf-8"))
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+        print("✅ ഐപിഒ റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
+    except Exception as e:
+        print(f"❌ ഇമെയിൽ അയക്കുന്നതിൽ പരാജയപ്പെട്ടു: {e}")
+
+if __name__ == "__main__":
+    extracted_data = fetch_in_depth_ipo_data()
+    
+    if extracted_data.strip():
+        subject, content = analyze_ipo_data(extracted_data)
+        send_email(subject, content)
+    else:
+        print("ഡാറ്റയൊന്നും ലഭിച്ചില്ല. ഇമെയിൽ അയയ്ക്കുന്നില്ല.")
