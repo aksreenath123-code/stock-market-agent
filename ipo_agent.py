@@ -36,14 +36,12 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==================== 3. INTELLIGENT SCRAPER & RETRY LOGIC ====================
 def clean_url(url_str):
-    """കോപ്പി-പേസ്റ്റ് ചെയ്യുമ്പോൾ വരുന്ന ബ്രാക്കറ്റുകളും മറ്റ് അനാവശ്യ ചിഹ്നങ്ങളും ഒഴിവാക്കുന്നു"""
     cleaned = re.sub(r'^\[.*?\]\((.*?)\)$', r'\1', str(url_str).strip())
     cleaned = cleaned.replace('[', '').replace(']', '').replace('(', '').replace(')', '')
     cleaned = cleaned.replace("'", "").replace('"', '').strip()
     return cleaned
 
 def fetch_with_retry(url, retries=3):
-    """നെറ്റ്‌വർക്ക് പ്രശ്നങ്ങൾ മറികടക്കാൻ 3 തവണ റീട്രൈ ചെയ്യുന്നു"""
     clean_u = clean_url(url)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -131,7 +129,6 @@ def fetch_in_depth_ipo_data():
     target_links = get_active_and_upcoming_links()
     ipo_data = []
     
-    # അഥവാ ലിങ്കുകൾ കിട്ടിയില്ലെങ്കിൽ ബാക്കപ്പ് ആയി ചിറ്റോർഗഡിൽ നിന്ന് ഡാറ്റ എടുക്കുന്നു (Intelligent Fallback)
     if not target_links:
         print("⚠️ ഡീപ് ലിങ്കുകൾ കിട്ടിയില്ല. ബാക്കപ്പ് ഡാറ്റ ഉപയോഗിക്കുന്നു...")
         backup_html = fetch_with_retry("https://www.chittorgarh.com/")
@@ -224,19 +221,31 @@ def send_email(subject, html_content):
     
     msg.attach(MIMEText(wrapped_html, "html", "utf-8"))
 
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
-        print("✅ ഐപിഒ റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
-    except Exception as e:
-        print(f"❌ ഇമെയിൽ അയക്കുന്നതിൽ പരാജയപ്പെട്ടു: {e}")
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+        server.send_message(msg)
 
+# ==================== 6. MAIN EXECUTION WITH RETRY LOGIC ====================
 if __name__ == "__main__":
     extracted_data = fetch_in_depth_ipo_data()
     
     if extracted_data.strip():
-        subject, content = analyze_ipo_data(extracted_data)
-        send_email(subject, content)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # എഐ അനാലിസിസും ഇമെയിൽ അയക്കലും ഇവിടെ നടക്കുന്നു
+                subject, content = analyze_ipo_data(extracted_data)
+                send_email(subject, content)
+                print("✅ ഐപിഒ റിപ്പോർട്ട് വിജയകരമായി തയ്യാറാക്കി അയച്ചു!")
+                break # എല്ലാം വിജയകരമായി കഴിഞ്ഞാൽ ലൂപ്പിൽ നിന്നും പുറത്ത് വരുന്നു
+            
+            except Exception as e:
+                print(f"⚠️ Attempt {attempt + 1} പരാജയപ്പെട്ടു (AI/Email Error): {e}")
+                
+                if attempt < max_retries - 1:
+                    print("⏳ 1 മിനിറ്റിനുശേഷം വീണ്ടും ശ്രമിക്കുന്നു (Retrying in 60 seconds)...")
+                    time.sleep(60) # 1 മിനിറ്റ് കാത്തിരിക്കുന്നു
+                else:
+                    print("❌ 3 തവണ ശ്രമിച്ചിട്ടും പരാജയപ്പെട്ടു. പ്രോഗ്രാം പൂർണ്ണമായും നിർത്തുന്നു.")
     else:
         print("ഡാറ്റയൊന്നും ലഭിച്ചില്ല. ഇമെയിൽ അയയ്ക്കുന്നില്ല.")
