@@ -12,7 +12,6 @@ REQUIRED_PACKAGES = [
 ]
 
 def install_missing_packages():
-    """ആവശ്യമായ ലൈബ്രറികൾ ഇല്ലെങ്കിൽ തനിയെ ഇൻസ്റ്റാൾ ചെയ്യുന്നു"""
     for package in REQUIRED_PACKAGES:
         try:
             pkg_name = "google.genai" if package == "google-genai" else ("bs4" if package == "beautifulsoup4" else package)
@@ -152,7 +151,7 @@ def fetch_indian_market():
     Modern Dark HTML കാർഡുകൾ ഉപയോഗിച്ച് മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
     """
     
-    response = client.models.generate_content(model="gemini-1.5-pro", contents=prompt)
+    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
     return "🇮🇳 Indian Market: Top 10 Swing Picks & Breakouts", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 6. US MARKET SCANNER ====================
@@ -186,7 +185,7 @@ def fetch_us_market():
     Modern Dark HTML കാർഡുകൾ ഉപയോഗിച്ച് മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
     """
 
-    response = client.models.generate_content(model="gemini-1.5-pro", contents=prompt)
+    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
     return "🇺🇸 US Market: Top 10 Swing Picks & Breakouts", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 7. ഇമെയിൽ അയക്കൽ ====================
