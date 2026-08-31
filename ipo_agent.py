@@ -73,7 +73,7 @@ def fetch_in_depth_ipo_data():
             
     return "\n".join(ipo_data)
 
-# ==================== 4. AI അനാലിസിസ് (Advanced Logic) ====================
+# ==================== 4. AI അനാലിസിസ് ====================
 def analyze_ipo_data(raw_data):
     print("🧠 AI ഡാറ്റ വിശകലനം ചെയ്യുന്നു...")
     current_date = datetime.now().strftime("%Y-%m-%d")
@@ -106,7 +106,8 @@ def analyze_ipo_data(raw_data):
     Modern Dark HTML കാർഡുകൾ ഉപയോഗിച്ച് മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക. കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം മറുപടി നൽകുക. ഏറ്റവും മികച്ചവ ആദ്യം നൽകുക.
     """
     
-    response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+    # മോഡൽ നെയിം നിങ്ങളുടെ മുൻ ഏജന്റുകളിലെപ്പോലെ gemini-3.6-flash ആക്കി അപ്ഡേറ്റ് ചെയ്തു
+    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
     return "🚀 Advanced IPO Analysis: GMP Trends, Subscriptions & 15% Strategy", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 5. ഇമെയിൽ അയക്കൽ ====================
