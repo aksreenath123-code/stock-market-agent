@@ -225,27 +225,67 @@ def send_email(subject, html_content):
         server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
         server.send_message(msg)
 
-# ==================== 6. MAIN EXECUTION WITH RETRY LOGIC ====================
+def send_failure_email(error_message):
+    """3 തവണ ശ്രമിച്ചിട്ടും ഫെയിൽ ആയാൽ എമർജൻസി അലേർട്ട് മെയിൽ അയക്കുന്നു"""
+    print("🚨 എമർജൻസി അലേർട്ട് മെയിൽ അയക്കുന്നു...")
+    msg = MIMEMultipart("alternative")
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECEIVER_EMAIL
+    msg["Subject"] = "❌ ALERT: IPO Analysis Agent Failed!"
+    
+    html_content = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif;">
+        <h2 style="color: #c0392b;">⚠️ IPO Analysis Agent Execution Failed</h2>
+        <p>പ്രോഗ്രാം 3 തവണ റീട്രൈ ചെയ്തിട്ടും ടോക്കൺ ലിമിറ്റ് അല്ലെങ്കിൽ മറ്റ് സാങ്കേതിക തടസ്സങ്ങൾ കാരണം പരാജയപ്പെട്ടിരിക്കുന്നു.</p>
+        <p><b>Error Details:</b></p>
+        <pre style="background: #f8d7da; color: #721c24; padding: 10px; border-radius: 5px;">{error_message}</pre>
+        <p>ദയവായി ഗിറ്റ്ഹബ്ബിൽ പോയി മാന്വൽ ആയി ഒന്നുകൂടി റൺ (Workflow Dispatch) ചെയ്യുക.</p>
+    </body>
+    </html>
+    """
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+        print("✅ ഫെയിലിയർ അലേർട്ട് മെയിൽ വിജയകരമായി അയച്ചു!")
+    except Exception as e:
+        print(f"❌ അലേർട്ട് മെയിൽ അയക്കുന്നതിൽ പരാജയപ്പെട്ടു: {e}")
+
+# ==================== 6. MAIN EXECUTION WITH FALLBACK & ALERT ====================
 if __name__ == "__main__":
     extracted_data = fetch_in_depth_ipo_data()
     
     if extracted_data.strip():
         max_retries = 3
+        success = False
+        last_error = ""
+        
         for attempt in range(max_retries):
             try:
-                # എഐ അനാലിസിസും ഇമെയിൽ അയക്കലും ഇവിടെ നടക്കുന്നു
                 subject, content = analyze_ipo_data(extracted_data)
                 send_email(subject, content)
                 print("✅ ഐപിഒ റിപ്പോർട്ട് വിജയകരമായി തയ്യാറാക്കി അയച്ചു!")
-                break # എല്ലാം വിജയകരമായി കഴിഞ്ഞാൽ ലൂപ്പിൽ നിന്നും പുറത്ത് വരുന്നു
+                success = True
+                break 
             
             except Exception as e:
+                last_error = str(e)
                 print(f"⚠️ Attempt {attempt + 1} പരാജയപ്പെട്ടു (AI/Email Error): {e}")
                 
                 if attempt < max_retries - 1:
                     print("⏳ 1 മിനിറ്റിനുശേഷം വീണ്ടും ശ്രമിക്കുന്നു (Retrying in 60 seconds)...")
-                    time.sleep(60) # 1 മിനിറ്റ് കാത്തിരിക്കുന്നു
+                    time.sleep(60)
                 else:
-                    print("❌ 3 തവണ ശ്രമിച്ചിട്ടും പരാജയപ്പെട്ടു. പ്രോഗ്രാം പൂർണ്ണമായും നിർത്തുന്നു.")
+                    print("❌ 3 തവണ ശ്രമിച്ചിട്ടും പരാജയപ്പെട്ടു.")
+        
+        # 3 തവണയും പരാജയപ്പെട്ടാൽ കമ്പൾസറി ആയി ഫെയിലിയർ മെയിൽ അയക്കും
+        if not success:
+            send_failure_email(last_error)
+            sys.exit(1)
     else:
-        print("ഡാറ്റയൊന്നും ലഭിച്ചില്ല. ഇമെയിൽ അയയ്ക്കുന്നില്ല.")
+        print("ഡാറ്റയൊന്നും ലഭിച്ചില്ല. ഫെയിലിയർ മെയിൽ അയക്കുന്നു...")
+        send_failure_email("Scraping returned zero data. No IPO links found.")
+        sys.exit(1)
