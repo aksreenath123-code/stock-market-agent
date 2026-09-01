@@ -26,12 +26,14 @@ from bs4 import BeautifulSoup
 from google import genai
 
 # ==================== 2. API & Credentials ====================
-# പഴയ വാലിഡ് ആയ IPO_GEMINI_API_KEY തന്നെ ഉപയോഗിക്കുന്നു
 GEMINI_API_KEY = os.getenv("IPO_GEMINI_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
-BANANA_COOKIE = os.getenv("BANANA_COOKIE")
+
+# 🚨 ERROR FIX: കുക്കിയിലെ അനാവശ്യ സ്പേസുകളും പുതിയ ലൈനുകളും ഇവിടെ തനിയെ ഒഴിവാക്കുന്നു
+raw_cookie = os.getenv("BANANA_COOKIE")
+BANANA_COOKIE = str(raw_cookie).strip().replace('\n', '').replace('\r', '') if raw_cookie else None
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -42,7 +44,7 @@ def fetch_banana_data():
     url = "https://bananapatterns.com/"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Cookie": str(BANANA_COOKIE)
+        "Cookie": BANANA_COOKIE
     }
     
     scraped_data = ""
