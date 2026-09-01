@@ -1,0 +1,36 @@
+name: Banana Patterns Nightly Agent
+
+on:
+  schedule:
+    # 17:30 UTC എന്നത് കൃത്യം 11:00 PM IST (ഇന്ത്യൻ സമയം) ആണ്.
+    - cron: '30 17 * * *'
+  workflow_dispatch: 
+
+jobs:
+  run-banana-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install required packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 google-genai
+
+      - name: Run Banana Patterns Script
+        env:
+          # പഴയ IPO_GEMINI_API_KEY തന്നെ ഇവിടെ നൽകിയിരിക്കുന്നു
+          IPO_GEMINI_API_KEY: ${{ secrets.IPO_GEMINI_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+          BANANA_COOKIE: ${{ secrets.BANANA_COOKIE }}
+        run: |
+          python banana_agent.py
