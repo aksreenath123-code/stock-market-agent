@@ -35,7 +35,6 @@ import pandas as pd
 from google import genai
 
 # 3. API കോൺഫിഗറേഷൻ & സീക്രട്ടുകൾ
-#GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_KEY = os.getenv("IPO_GEMINI_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
@@ -46,7 +45,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==================== 4. ടെക്നിക്കൽ അനാലിസിസ് എൻജിൻ ====================
 def calculate_indicators(df):
-    if len(df) < 15:
+    if len(df) < 20:
         return None
     
     df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
@@ -59,9 +58,15 @@ def calculate_indicators(df):
     avg_volume = df['Volume'].rolling(window=10).mean()
     df['RVOL'] = df['Volume'] / avg_volume
     
+    # ക്രാബ് സോൺ (Consolidation) കാൽക്കുലേഷൻ
+    df['Max_15'] = df['High'].rolling(window=15).max()
+    df['Min_15'] = df['Low'].rolling(window=15).min()
+    
     latest = df.iloc[-1]
     prev = df.iloc[-2]
     pct_change = ((latest['Close'] - prev['Close']) / prev['Close']) * 100
+    
+    consolidation_pct = ((latest['Max_15'] - latest['Min_15']) / latest['Min_15']) * 100
     
     return {
         'LTP': round(float(latest['Close']), 2),
@@ -69,11 +74,11 @@ def calculate_indicators(df):
         'RSI': round(float(latest['RSI']), 2) if not pd.isna(latest['RSI'].iloc[0] if isinstance(latest['RSI'], pd.Series) else latest['RSI']) else 50.0,
         'EMA20': round(float(latest['EMA20']), 2),
         'RVOL': round(float(latest['RVOL']), 2) if not pd.isna(latest['RVOL'].iloc[0] if isinstance(latest['RVOL'], pd.Series) else latest['RVOL']) else 1.0,
-        'IsAboveEMA': bool(latest['Close'] > latest['EMA20'])
+        'IsAboveEMA': bool(latest['Close'] > latest['EMA20']),
+        'Consolidation%': round(float(consolidation_pct), 2) if not pd.isna(consolidation_pct) else 10.0
     }
 
 def scan_tickers_for_swing(ticker_list):
-    """എൽഎൽഎമ്മിന് കൂടുതൽ ഡാറ്റ നൽകാൻ ഫിൽറ്റർ റിലാക്സ് ചെയ്തിരിക്കുന്നു"""
     screened_stocks = []
     currency_symbol = "₹" if any(t.endswith(".NS") for t in ticker_list) else "$"
     
@@ -89,12 +94,11 @@ def scan_tickers_for_swing(ticker_list):
             if not ind:
                 continue
             
-            # AI-ക്ക് തിരഞ്ഞെടുക്കാൻ കൂടുതൽ സ്റ്റോക്കുകൾ നൽകുന്നു
-            if ind['RSI'] >= 40 and ind['RVOL'] >= 0.8:
+            if ind['RSI'] >= 35 and ind['RVOL'] >= 0.7:
                 clean_name = ticker.replace('.NS', '')
                 screened_stocks.append(
                     f"• {clean_name} ({ticker}): Price {currency_symbol}{ind['LTP']} "
-                    f"({ind['Change%']:+}%) | RSI: {ind['RSI']} | RVOL: {ind['RVOL']}x | >20EMA: {ind['IsAboveEMA']}"
+                    f"({ind['Change%']:+}%) | RSI: {ind['RSI']} | RVOL: {ind['RVOL']}x | >20EMA: {ind['IsAboveEMA']} | Consolid Range: {ind['Consolidation%']}%"
                 )
         except Exception:
             continue
@@ -103,7 +107,6 @@ def scan_tickers_for_swing(ticker_list):
 
 # ==================== 5. INDIAN MARKET SCANNER ====================
 def fetch_indian_market():
-    # 50 പ്രമുഖ ഇന്ത്യൻ സ്റ്റോക്കുകൾ
     indian_tickers = [
         "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
         "BHARTIARTL.NS", "LT.NS", "SBIN.NS", "TATASTEEL.NS", "TATAMOTORS.NS",
@@ -113,7 +116,8 @@ def fetch_indian_market():
         "BAJAJFINSV.NS", "COALINDIA.NS", "NTPC.NS", "ONGC.NS", "POWERGRID.NS", 
         "ULTRACEMCO.NS", "GRASIM.NS", "TECHM.NS", "HINDALCO.NS", "CIPLA.NS",
         "DRREDDY.NS", "EICHERMOT.NS", "APOLLOHOSP.NS", "HEROMOTOCO.NS", "DLF.NS",
-        "INDUSINDBK.NS", "CHOLAFIN.NS", "TVSMOTOR.NS", "VEDL.NS", "GAIL.NS"
+        "INDUSINDBK.NS", "CHOLAFIN.NS", "TVSMOTOR.NS", "VEDL.NS", "GAIL.NS",
+        "BHEL.NS", "PFC.NS", "RECLTD.NS", "IRFC.NS"
     ]
     
     print("🇮🇳 ഇന്ത്യൻ സ്റ്റോക്കുകളുടെ ഡാറ്റ സ്കാൻ ചെയ്യുന്നു...")
@@ -135,15 +139,16 @@ def fetch_indian_market():
     നിങ്ങൾ ഒരു പ്രൊഫഷണൽ സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. താഴെ നൽകിയിരിക്കുന്ന ഇന്ത്യൻ ഡാറ്റ വിശകലനം ചെയ്യുക.
     
     🚨 കർത്തശനമായ നിർദ്ദേശങ്ങൾ (CRITICAL INSTRUCTIONS):
-    1. STOCK NAME & SYMBOL MISSING ISSUE: ഓരോ സ്റ്റോക്കിന്റെയും പേരും സിംബലും കാർഡിന്റെ ഹെഡിംഗിൽ നിർബന്ധമായും നൽകിയിരിക്കണം. (ഉദാഹരണത്തിന്: <h3>RELIANCE (RELIANCE.NS)</h3>). ഇത് ഒഴിവാക്കരുത്!
-    2. കൃത്യം 20 സ്റ്റോക്കുകൾ താഴെ പറയുന്ന 3 വിഭാഗങ്ങളിലായി തരംതിരിക്കുക:
+    1. STOCK NAME & SYMBOL: ഓരോ സ്റ്റോക്കിന്റെയും പേരും സിംബലും കാർഡിന്റെ ഹെഡിംഗിൽ നിർബന്ധമായും നൽകിയിരിക്കണം. (ഉദാഹരണത്തിന്: <h3>RELIANCE (RELIANCE.NS)</h3>). ഇത് ഒഴിവാക്കരുത്!
+    2. കൃത്യം 25 സ്റ്റോക്കുകൾ താഴെ പറയുന്ന 4 വിഭാഗങ്ങളിലായി തരംതിരിക്കുക:
        - സെക്ഷൻ 1: 🏆 ടോപ്പ് 10 സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (Rank 1 മുതൽ 10 വരെ). ഏറ്റവും വിജയസാധ്യതയുള്ളത് (Highest Probability of 3-5% profit in 1 week) ഒന്നാമതായി നൽകുക.
        - സെക്ഷൻ 2: 🚀 5 ഹൈ മൊമെന്റം സ്റ്റോക്കുകൾ (High RSI & Strong Uptrend).
        - സെക്ഷൻ 3: 💥 5 ഹൈ വോളിയം ബ്രേക്ക്ഔട്ട് സ്റ്റോക്കുകൾ (RVOL > 1.5x).
+       - സെക്ഷൻ 4: 🦀 5 ക്രാബ് സോൺ റീബൗണ്ട് സ്റ്റോക്കുകൾ. ('Consolid Range' വളരെ കുറവുള്ളതും എന്നാൽ ഇപ്പോൾ RSI കുതിച്ചുയർന്ന് അപ്പർ ട്രെൻഡിലേക്ക് മാറുന്നതുമായ 5 സ്റ്റോക്കുകൾ).
 
     ഓരോ സ്റ്റോക്കിനും Entry Zone, Target (3-5%), Stop Loss എന്നിവ നൽകുക.
 
-    📊 സാങ്കേതിക ഡാറ്റ:
+    📊 സാങ്കേതിക ഡാറ്റ (RSI, RVOL, Consolid Range):
     {chr(10).join(swing_candidates)}
 
     💎 Moneycontrol Pro ഡാറ്റ:
@@ -153,7 +158,7 @@ def fetch_indian_market():
     """
     
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🇮🇳 Indian Market: Top 10 Swing Picks & Breakouts", response.text.replace("```html", "").replace("```", "").strip()
+    return "🇮🇳 Indian Market: Pro Swing Picks & Crab Zone Rebounds", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 6. US MARKET SCANNER ====================
 def fetch_us_market():
@@ -162,7 +167,8 @@ def fetch_us_market():
         "NFLX", "PLTR", "AVGO", "SMCI", "COIN", "MARA", "QCOM", "ARM",
         "UBER", "CRWD", "PYPL", "INTC", "DIS", "CRM", "MSTR", "MU", 
         "CSCO", "ADBE", "PEP", "COST", "TMUS", "TXN", "INTU", "AMAT",
-        "ISRG", "NOW", "BKNG", "VRTX", "REGN", "ADI", "PANW", "SNPS"
+        "ISRG", "NOW", "BKNG", "VRTX", "REGN", "ADI", "PANW", "SNPS",
+        "UBER", "ABNB", "SQ", "ROKU", "SPOT"
     ]
     
     print("🇺🇸 യുഎസ് സ്റ്റോക്കുകളുടെ ഡാറ്റ സ്കാൻ ചെയ്യുന്നു...")
@@ -172,22 +178,23 @@ def fetch_us_market():
     നിങ്ങൾ ഒരു Wall Street സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. താഴെ നൽകിയിരിക്കുന്ന യുഎസ് ഡാറ്റ വിശകലനം ചെയ്യുക.
     
     🚨 കർത്തശനമായ നിർദ്ദേശങ്ങൾ (CRITICAL INSTRUCTIONS):
-    1. STOCK NAME & SYMBOL MISSING ISSUE: ഓരോ സ്റ്റോക്കിന്റെയും പേരും സിംബലും കാർഡിന്റെ ഹെഡിംഗിൽ നിർബന്ധമായും നൽകിയിരിക്കണം. (ഉദാഹരണത്തിന്: <h3>NVIDIA (NVDA)</h3>). ഇത് ഒഴിവാക്കരുത്!
-    2. കൃത്യം 20 സ്റ്റോക്കുകൾ താഴെ പറയുന്ന 3 വിഭാഗങ്ങളിലായി തരംതിരിക്കുക:
+    1. STOCK NAME & SYMBOL: ഓരോ സ്റ്റോക്കിന്റെയും പേരും സിംബലും കാർഡിന്റെ ഹെഡിംഗിൽ നിർബന്ധമായും നൽകിയിരിക്കണം. (ഉദാഹരണത്തിന്: <h3>NVIDIA (NVDA)</h3>). ഇത് ഒഴിവാക്കരുത്!
+    2. കൃത്യം 25 സ്റ്റോക്കുകൾ താഴെ പറയുന്ന 4 വിഭാഗങ്ങളിലായി തരംതിരിക്കുക:
        - സെക്ഷൻ 1: 🏆 ടോപ്പ് 10 സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (Rank 1 മുതൽ 10 വരെ). ഏറ്റവും വിജയസാധ്യതയുള്ളത് (Highest Probability of 3-5% profit in 1 week) ഒന്നാമതായി നൽകുക.
        - സെക്ഷൻ 2: 🚀 5 ഹൈ മൊമെന്റം സ്റ്റോക്കുകൾ (High RSI & Strong Uptrend).
        - സെക്ഷൻ 3: 💥 5 ഹൈ വോളിയം ബ്രേക്ക്ഔട്ട് സ്റ്റോക്കുകൾ (RVOL > 1.5x).
+       - സെക്ഷൻ 4: 🦀 5 ക്രാബ് സോൺ റീബൗണ്ട് സ്റ്റോക്കുകൾ. ('Consolid Range' വളരെ കുറവുള്ളതും എന്നാൽ ഇപ്പോൾ RSI കുതിച്ചുയർന്ന് അപ്പർ ട്രെൻഡിലേക്ക് മാറുന്നതുമായ 5 സ്റ്റോക്കുകൾ).
 
     ഓരോ സ്റ്റോക്കിനും Entry Zone, Target (3-5%), Stop Loss എന്നിവ നൽകുക.
 
-    📊 യുഎസ് സാങ്കേതിക ഡാറ്റ:
+    📊 യുഎസ് സാങ്കേതിക ഡാറ്റ (RSI, RVOL, Consolid Range):
     {chr(10).join(us_swing_candidates)}
 
     Modern Dark HTML കാർഡുകൾ ഉപയോഗിച്ച് മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
     """
 
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🇺🇸 US Market: Top 10 Swing Picks & Breakouts", response.text.replace("```html", "").replace("```", "").strip()
+    return "🇺🇸 US Market: Pro Swing Picks & Crab Zone Rebounds", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 7. ഇമെയിൽ അയക്കൽ ====================
 def send_email(subject, html_content):
@@ -210,4 +217,4 @@ if __name__ == "__main__":
         subject, content = fetch_indian_market()
 
     send_email(subject, content)
-    print(f"✅ {market_type.upper()} സ്വിംഗ് ട്രേഡിംഗ് റിപ്പോർട്ട് (10+5+5) വിജയകരമായി അയച്ചു!")
+    print(f"✅ {market_type.upper()} സ്വിംഗ് ട്രേഡിംഗ് റിപ്പോർട്ട് (10+5+5+5 Crab Zone) വിജയകരമായി അയച്ചു!")
