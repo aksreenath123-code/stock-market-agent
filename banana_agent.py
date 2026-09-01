@@ -1,15 +1,14 @@
 import sys
 import subprocess
+import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import time
+from datetime import datetime
 
-# ==================== 1. ഓട്ടോമാറ്റിക് ലൈബ്രറി ഇൻസ്റ്റാളേഷൻ ====================
-REQUIRED_PACKAGES = [
-    "requests",
-    "feedparser",
-    "google-genai",
-    "yfinance",
-    "pandas",
-    "beautifulsoup4"
-]
+# ==================== 1. ഓട്ടോമാറ്റിക് പാക്കേജ് ഇൻസ്റ്റാളേഷൻ ====================
+REQUIRED_PACKAGES = ["requests", "google-genai", "beautifulsoup4"]
 
 def install_missing_packages():
     for package in REQUIRED_PACKAGES:
@@ -22,206 +21,87 @@ def install_missing_packages():
 
 install_missing_packages()
 
-# ==================== 2. പ്രധാന ഇമ്പോർട്ടുകൾ ====================
-import os
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 import requests
-import feedparser
 from bs4 import BeautifulSoup
-import yfinance as yf
-import pandas as pd
 from google import genai
 
-# 3. API കോൺഫിഗറേഷൻ & സീക്രട്ടുകൾ
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# ==================== 2. API & Credentials ====================
+GEMINI_API_KEY = os.getenv("IPO_GEMINI_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
-MC_COOKIE = os.getenv("MONEYCONTROL_COOKIE", "")
+
+raw_cookie = os.getenv("BANANA_COOKIE")
+BANANA_COOKIE = str(raw_cookie).strip().replace('\n', '').replace('\r', '') if raw_cookie else None
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ==================== 4. ടെക്നിക്കൽ അനാലിസിസ് എൻജിൻ ====================
-def calculate_indicators(df):
-    if len(df) < 20:
-        return None
+# ==================== 3. COOKIE-BASED DATA EXTRACTION ====================
+def fetch_banana_data():
+    print("🌐 ബനാന പാറ്റേൺസിൽ നിന്നും ഡീറ്റെയിൽഡ് ഡാറ്റ ശേഖരിക്കുന്നു...")
     
-    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-    
-    avg_volume = df['Volume'].rolling(window=10).mean()
-    df['RVOL'] = df['Volume'] / avg_volume
-    
-    df['Max_15'] = df['High'].rolling(window=15).max()
-    df['Min_15'] = df['Low'].rolling(window=15).min()
-    
-    latest = df.iloc[-1]
-    prev = df.iloc[-2]
-    pct_change = ((latest['Close'] - prev['Close']) / prev['Close']) * 100
-    
-    consolidation_pct = ((latest['Max_15'] - latest['Min_15']) / latest['Min_15']) * 100
-    
-    return {
-        'LTP': round(float(latest['Close']), 2),
-        'Change%': round(float(pct_change), 2),
-        'RSI': round(float(latest['RSI']), 2) if not pd.isna(latest['RSI'].iloc[0] if isinstance(latest['RSI'], pd.Series) else latest['RSI']) else 50.0,
-        'EMA20': round(float(latest['EMA20']), 2),
-        'RVOL': round(float(latest['RVOL']), 2) if not pd.isna(latest['RVOL'].iloc[0] if isinstance(latest['RVOL'], pd.Series) else latest['RVOL']) else 1.0,
-        'IsAboveEMA': bool(latest['Close'] > latest['EMA20']),
-        'Consolidation%': round(float(consolidation_pct), 2) if not pd.isna(consolidation_pct) else 10.0
+    url = "https://bananapatterns.com/"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Cookie": BANANA_COOKIE
     }
-
-def scan_tickers_for_swing(ticker_list):
-    screened_stocks = []
-    currency_symbol = "₹" if any(t.endswith(".NS") for t in ticker_list) else "$"
     
-    for ticker in ticker_list:
-        try:
-            data = yf.download(ticker, period="1mo", interval="1d", progress=False)
-            if data.empty:
-                continue
-            if isinstance(data.columns, pd.MultiIndex):
-                data.columns = [col[0] for col in data.columns]
-                
-            ind = calculate_indicators(data)
-            if not ind:
-                continue
-            
-            if ind['RSI'] >= 35 and ind['RVOL'] >= 0.7:
-                clean_name = ticker.replace('.NS', '')
-                screened_stocks.append(
-                    f"• {clean_name} ({ticker}): Price {currency_symbol}{ind['LTP']} "
-                    f"({ind['Change%']:+}%) | RSI: {ind['RSI']} | RVOL: {ind['RVOL']}x | >20EMA: {ind['IsAboveEMA']} | Consolid Range: {ind['Consolidation%']}%"
-                )
-        except Exception:
-            continue
-            
-    return screened_stocks
-
-# ==================== 5. INDIAN MARKET SCANNER ====================
-def fetch_indian_market():
-    indian_tickers = [
-        "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
-        "BHARTIARTL.NS", "LT.NS", "SBIN.NS", "TATASTEEL.NS", "TATAMOTORS.NS",
-        "ADANIENT.NS", "KOTAKBANK.NS", "AXISBANK.NS", "ITC.NS", "SUNPHARMA.NS",
-        "TITAN.NS", "BAJFINANCE.NS", "MARUTI.NS", "JSWSTEEL.NS", "BEL.NS",
-        "M&M.NS", "HCLTECH.NS", "WIPRO.NS", "HAL.NS", "ZOMATO.NS", "TRENT.NS", 
-        "BAJAJFINSV.NS", "COALINDIA.NS", "NTPC.NS", "ONGC.NS", "POWERGRID.NS", 
-        "ULTRACEMCO.NS", "GRASIM.NS", "TECHM.NS", "HINDALCO.NS", "CIPLA.NS",
-        "DRREDDY.NS", "EICHERMOT.NS", "APOLLOHOSP.NS", "HEROMOTOCO.NS", "DLF.NS",
-        "INDUSINDBK.NS", "CHOLAFIN.NS", "TVSMOTOR.NS", "VEDL.NS", "GAIL.NS",
-        "BHEL.NS", "PFC.NS", "RECLTD.NS", "IRFC.NS"
-    ]
-    
-    print("🇮🇳 ഇന്ത്യൻ സ്റ്റോക്കുകളുടെ ഡാറ്റ സ്കാൻ ചെയ്യുന്നു...")
-    swing_candidates = scan_tickers_for_swing(indian_tickers)
-    
-    headers = {"User-Agent": "Mozilla/5.0", "Cookie": MC_COOKIE}
-    mc_news = []
+    scraped_data = ""
     try:
-        res = requests.get("https://www.moneycontrol.com/news/mcpro-technical-analysis/", headers=headers, timeout=8)
+        res = requests.get(url, headers=headers, timeout=20)
         if res.status_code == 200:
+            print("✅ ലോഗിൻ സക്സസ്ഫുൾ! പേജ് കണ്ടെന്റ് എക്സ്ട്രാക്ട് ചെയ്യുന്നു...")
             soup = BeautifulSoup(res.text, "html.parser")
-            for art in soup.select("li.clearfix, div.news_card")[:5]:
-                t = art.find(["h2", "h3"])
-                if t: mc_news.append(f"• MC Pro: {t.get_text(strip=True)}")
-    except Exception:
-        pass
+            
+            scraped_data += soup.get_text(separator=' \n ', strip=True)
+            
+            scripts = soup.find_all('script')
+            for script in scripts:
+                if script.string and any(k in script.string for k in ['Forming', 'Climbing', 'Fresh breakouts', 'breakout', 'support', 'resistance', 'pattern']):
+                    scraped_data += "\n--- Technical Script & Chart Data ---\n" + script.string[:8000]
+                    
+            scraped_data = scraped_data[:35000]
+        else:
+            print(f"❌ ആക്സസ് ഫെയിൽഡ് (Status: {res.status_code}). കുക്കി പരിശോധിക്കുക.")
+    except Exception as e:
+        print(f"❌ സ്ക്രാപ്പിംഗ് എറർ: {e}")
+        
+    return scraped_data
 
+# ==================== 4. HIGH CONVICTION AI QUANT ENGINE (>90% WIN-RATE) ====================
+def analyze_data(raw_data):
+    print("🧠 90%+ Win-Rate അനാലിസിസും കളർ-കോഡഡ് ഡിസൈനും തയ്യാറാക്കുന്നു...")
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    
     prompt = f"""
-    നിങ്ങൾ ഒരു പ്രൊഫഷണൽ സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. താഴെ നൽകിയിരിക്കുന്ന ഇന്ത്യൻ ഡാറ്റ വിശകലനം ചെയ്യുക.
+    നിങ്ങൾ ഒരു എലൈറ്റ് ലെവൽ ക്വാണ്ടിറ്റേറ്റീവ് & മാക്രോ-ടെക്നിക്കൽ സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. 
+    ഇന്നത്തെ തീയതി: {current_date}.
     
-    🚨 കർശനമായ നിർദ്ദേശങ്ങൾ (CRITICAL INSTRUCTIONS):
-    1. STOCK NAME & SYMBOL: ഓരോ സ്റ്റോക്കിന്റെയും പേരും സിംബലും കാർഡിന്റെ ഹെഡിംഗിൽ നിർബന്ധമായും നൽകിയിരിക്കണം. (ഉദാഹരണത്തിന്: <h3>RELIANCE (RELIANCE.NS)</h3>). ഇത് ഒഴിവാക്കരുത്!
-    2. കൃത്യം 25 സ്റ്റോക്കുകൾ താഴെ പറയുന്ന 4 വിഭാഗങ്ങളിലായി തരംതിരിക്കുക:
-       - സെക്ഷൻ 1: 🏆 ടോപ്പ് 10 സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (ഏറ്റവും വിജയസാധ്യതയുള്ളത് ആദ്യം).
-       - സെക്ഷൻ 2: 🚀 5 ഹൈ മൊമെന്റം സ്റ്റോക്കുകൾ.
-       - സെക്ഷൻ 3: 💥 5 ഹൈ വോളിയം ബ്രേക്ക്ഔട്ട് സ്റ്റോക്കുകൾ.
-       - സെക്ഷൻ 4: 🦀 5 ക്രാബ് സോൺ റീബൗണ്ട് സ്റ്റോക്കുകൾ (Consolid Range കുറവുള്ളവ).
-    
-    🎨 STRICT HTML & CSS STYLING FOR READABILITY:
-    - അക്ഷരങ്ങൾ വ്യക്തമായി വായിക്കാൻ കഴിയുന്ന HIGH CONTRAST കളറുകൾ ഉപയോഗിക്കുക. 
-    - ടേബിളിന്റെ അല്ലെങ്കിൽ കാർഡിന്റെ ബാക്ക്ഗ്രൗണ്ട് ഇരുണ്ട നിറം (ഉദാ: #1e293b അല്ലെങ്കിൽ #1f2937) ആണെങ്കിൽ, അതിലെ മുഴുവൻ അക്ഷരങ്ങളും നിർബന്ധമായും പൂർണ്ണ വെള്ള നിറത്തിൽ (color: #ffffff;) നൽകുക. ഒരിക്കലും ഇരുണ്ട പശ്ചാത്തലത്തിൽ ഇരുണ്ട അക്ഷരങ്ങൾ നൽകരുത്.
-    - 4 കാറ്റഗറികൾക്കും വ്യക്തമായി തിരിച്ചറിയാൻ വ്യത്യസ്ത നിറങ്ങളിലുള്ള ഹെഡിംഗ് ബാക്ക്ഗ്രൗണ്ടുകൾ നൽകുക (ഉദാഹരണത്തിന്: സെക്ഷൻ 1-ന് ബ്ലൂ, സെക്ഷൻ 2-ന് പർപ്പിൾ, സെക്ഷൻ 3-ന് ഓറഞ്ച്, സെക്ഷൻ 4-ന് ടീൽ/ഗ്രീൻ).
-    - Entry Zone, Target, Stop Loss എന്നിവ ബോൾഡ് ആയി വ്യക്തമായി നൽകുക.
+    താഴെ നൽകിയിരിക്കുന്നത് 'Banana Patterns' വെബ്സൈറ്റിൽ നിന്നുള്ള 'Forming', 'Climbing', 'Fresh breakouts' ഡാറ്റയാണ്:
+    -----------------------------------------
+    {raw_data}
+    -----------------------------------------
 
-    📊 സാങ്കേതിക ഡാറ്റ:
-    {chr(10).join(swing_candidates)}
+    🚨 നിങ്ങളുടെ അനാലിസിസ് ടാസ്ക്കുകൾ:
+    നിങ്ങളുടെ HTML ഔട്ട്പുട്ടിൽ കൃത്യമായി 2 ഭാഗങ്ങൾ (Sections) ഉണ്ടായിരിക്കണം.
 
-    💎 Moneycontrol Pro ഡാറ്റ:
-    {chr(10).join(mc_news)}
+    **ഭാഗം 1: SECTION 1 - TOP 15 ELITE PICKS (>90% CONVICTION)**
+    - "<h3>1. The Ultimate 15 Swing Setups</h3>" എന്ന് ഹെഡിങ് നൽകുക.
+    - ഗ്ലോബൽ മാർക്കറ്റ് സെന്റിമെന്റ്, 20/50/200 EMAs, RSI, MACD, Volume എന്നിവ വെച്ച് അനലൈസ് ചെയ്ത് കൃത്യം 15 സ്റ്റോക്കുകൾ (Forming-ൽ നിന്ന് 5, Climbing-ൽ നിന്ന് 5, Fresh breakouts-ൽ നിന്ന് 5) തിരഞ്ഞെടുക്കുക.
+    - 7 കോളങ്ങളുള്ള ഒരു ടേബിൾ നിർമ്മിക്കുക: | Stock Name & Ticker | Category | Global & Sector Sentiment | Deep Technical Confluence | Trigger / Entry Point (₹) | Target & Strict Stop Loss | Conviction Level & Rationale |
+    - 🎨 **COLOR CODING RULE (CRITICAL):** 'Category' കോളത്തിലെ ടെക്സ്റ്റിന് നിർബന്ധമായും താഴെ പറയുന്ന HTML ക്ലാസുകൾ നൽകണം (അതായത് `<span class="category-forming">Forming</span>` എന്ന രീതിയിൽ):
+      - Forming ആണെങ്കിൽ: `class="category-forming"`
+      - Climbing ആണെങ്കിൽ: `class="category-climbing"`
+      - Fresh Breakout ആണെങ്കിൽ: `class="category-fresh"`
+    - ഇൻലൈൻ സ്റ്റൈലുകളോ (inline CSS) ഡാർക്ക് ബാക്ക്ഗ്രൗണ്ടുകളോ ഉപയോഗിക്കരുത്. വളരെ ക്ലീൻ ആയ ഡിസൈൻ ആയിരിക്കണം.
 
-    ലഭ്യമായ ഡാറ്റ വെച്ച് മുകളിൽ പറഞ്ഞ കളർ കോഡിംഗ് പാലിക്കുന്ന മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
+    **ഭാഗം 2: SECTION 2 - COMPLETE MASTER LIST (ALL STOCKS)**
+    - "<h3>2. Complete Master List of All Stocks</h3>" എന്ന് ഹെഡിങ് നൽകുക.
+    - ഡാറ്റയിൽ നിന്നും കണ്ടെത്താൻ കഴിഞ്ഞ എല്ലാ സ്റ്റോക്കുകളുടെയും പേരുകൾ കാറ്റഗറി തിരിച്ച് ലളിതമായ ബുള്ളറ്റ് പോയിന്റുകളിലോ (ul/li) ടേബിളിലോ ലിസ്റ്റ് ചെയ്യുക. ഇവിടെ അനാലിസിസ് ആവശ്യമില്ല.
+
+    📋 OUTPUT FORMAT:
+    മനോഹരമായ HTML കോഡ് മാത്രം മറുപടി നൽകുക. കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം തരുക. 
     """
     
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🇮🇳 Indian Market: Pro Swing Picks & Crab Zone Rebounds", response.text.replace("```html", "").replace("```", "").strip()
-
-# ==================== 6. US MARKET SCANNER ====================
-def fetch_us_market():
-    us_tickers = [
-        "NVDA", "AAPL", "MSFT", "TSLA", "AMZN", "GOOGL", "META", "AMD",
-        "NFLX", "PLTR", "AVGO", "SMCI", "COIN", "MARA", "QCOM", "ARM",
-        "UBER", "CRWD", "PYPL", "INTC", "DIS", "CRM", "MSTR", "MU", 
-        "CSCO", "ADBE", "PEP", "COST", "TMUS", "TXN", "INTU", "AMAT",
-        "ISRG", "NOW", "BKNG", "VRTX", "REGN", "ADI", "PANW", "SNPS",
-        "UBER", "ABNB", "SQ", "ROKU", "SPOT"
-    ]
-    
-    print("🇺🇸 യുഎസ് സ്റ്റോക്കുകളുടെ ഡാറ്റ സ്കാൻ ചെയ്യുന്നു...")
-    us_swing_candidates = scan_tickers_for_swing(us_tickers)
-    
-    prompt = f"""
-    നിങ്ങൾ ഒരു Wall Street സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. താഴെ നൽകിയിരിക്കുന്ന യുഎസ് ഡാറ്റ വിശകലനം ചെയ്യുക.
-    
-    🚨 കർശനമായ നിർദ്ദേശങ്ങൾ (CRITICAL INSTRUCTIONS):
-    1. STOCK NAME & SYMBOL: ഓരോ സ്റ്റോക്കിന്റെയും പേരും സിംബലും കാർഡിന്റെ ഹെഡിംഗിൽ നിർബന്ധമായും നൽകിയിരിക്കണം. (ഉദാഹരണത്തിന്: <h3>NVIDIA (NVDA)</h3>). ഇത് ഒഴിവാക്കരുത്!
-    2. കൃത്യം 25 സ്റ്റോക്കുകൾ താഴെ പറയുന്ന 4 വിഭാഗങ്ങളിലായി തരംതിരിക്കുക:
-       - സെക്ഷൻ 1: 🏆 ടോപ്പ് 10 സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (ഏറ്റവും വിജയസാധ്യതയുള്ളത് ആദ്യം).
-       - സെക്ഷൻ 2: 🚀 5 ഹൈ മൊമെന്റം സ്റ്റോക്കുകൾ.
-       - സെക്ഷൻ 3: 💥 5 ഹൈ വോളിയം ബ്രേക്ക്ഔട്ട് സ്റ്റോക്കുകൾ.
-       - സെക്ഷൻ 4: 🦀 5 ക്രാബ് സോൺ റീബൗണ്ട് സ്റ്റോക്കുകൾ (Consolid Range കുറവുള്ളവ).
-    
-    🎨 STRICT HTML & CSS STYLING FOR READABILITY:
-    - അക്ഷരങ്ങൾ വ്യക്തമായി വായിക്കാൻ കഴിയുന്ന HIGH CONTRAST കളറുകൾ ഉപയോഗിക്കുക. 
-    - ടേബിളിന്റെ അല്ലെങ്കിൽ കാർഡിന്റെ ബാക്ക്ഗ്രൗണ്ട് ഇരുണ്ട നിറം (ഉദാ: #1e293b അല്ലെങ്കിൽ #1f2937) ആണെങ്കിൽ, അതിലെ മുഴുവൻ അക്ഷരങ്ങളും നിർബന്ധമായും പൂർണ്ണ വെള്ള നിറത്തിൽ (color: #ffffff;) നൽകുക. ഒരിക്കലും ഇരുണ്ട പശ്ചാത്തലത്തിൽ ഇരുണ്ട അക്ഷരങ്ങൾ നൽകരുത്.
-    - 4 കാറ്റഗറികൾക്കും വ്യക്തമായി തിരിച്ചറിയാൻ വ്യത്യസ്ത നിറങ്ങളിലുള്ള ഹെഡിംഗ് ബാക്ക്ഗ്രൗണ്ടുകൾ നൽകുക (ഉദാഹരണത്തിന്: സെക്ഷൻ 1-ന് ബ്ലൂ, സെക്ഷൻ 2-ന് പർപ്പിൾ, സെക്ഷൻ 3-ന് ഓറഞ്ച്, സെക്ഷൻ 4-ന് ടീൽ/ഗ്രീൻ).
-    - Entry Zone, Target, Stop Loss എന്നിവ ബോൾഡ് ആയി വ്യക്തമായി നൽകുക.
-
-    📊 യുഎസ് സാങ്കേതിക ഡാറ്റ:
-    {chr(10).join(us_swing_candidates)}
-
-    ലഭ്യമായ ഡാറ്റ വെച്ച് മുകളിൽ പറഞ്ഞ കളർ കോഡിംഗ് പാലിക്കുന്ന മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
-    """
-
-    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🇺🇸 US Market: Pro Swing Picks & Crab Zone Rebounds", response.text.replace("```html", "").replace("```", "").strip()
-
-# ==================== 7. ഇമെയിൽ അയക്കൽ ====================
-def send_email(subject, html_content):
-    msg = MIMEMultipart("alternative")
-    msg["From"] = SENDER_EMAIL
-    msg["To"] = RECEIVER_EMAIL
-    msg["Subject"] = subject
-    msg.attach(MIMEText(html_content, "html", "utf-8"))
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
-        server.send_message(msg)
-
-if __name__ == "__main__":
-    market_type = sys.argv[1] if len(sys.argv) > 1 else "indian"
-    
-    if market_type == "us":
-        subject, content = fetch_us_market()
-    else:
-        subject, content = fetch_indian_market()
-
-    send_email(subject, content)
-    print(f"✅ {market_type.upper()} സ്വിംഗ് ട്രേഡിംഗ് റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
+    return "🚀 Banana Patterns: Top 15 Elite Picks (Color Coded)", response.text.replace("```html", "").replace("
