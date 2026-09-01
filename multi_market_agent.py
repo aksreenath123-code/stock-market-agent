@@ -136,29 +136,33 @@ def fetch_indian_market():
         pass
 
     prompt = f"""
-    നിങ്ങൾ ഒരു പ്രൊഫഷണൽ സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. താഴെ നൽകിയിരിക്കുന്ന ഇന്ത്യൻ ഡാറ്റ വിശകലനം ചെയ്യുക.
+    നിങ്ങൾ ഒരു പ്രൊഫഷണൽ സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. താഴെ നൽകിയിരിക്കുന്ന ഇന്ത്യൻ ഡാറ്റ വിശദമായി വിശകലനം ചെയ്യുക.
     
-    🚨 കർത്തശനമായ നിർദ്ദേശങ്ങൾ (CRITICAL INSTRUCTIONS):
-    1. STOCK NAME & SYMBOL: ഓരോ സ്റ്റോക്കിന്റെയും പേരും സിംബലും കാർഡിന്റെ ഹെഡിംഗിൽ നിർബന്ധമായും നൽകിയിരിക്കണം. (ഉദാഹരണത്തിന്: <h3>RELIANCE (RELIANCE.NS)</h3>). ഇത് ഒഴിവാക്കരുത്!
-    2. കൃത്യം 25 സ്റ്റോക്കുകൾ താഴെ പറയുന്ന 4 വിഭാഗങ്ങളിലായി തരംതിരിക്കുക:
-       - സെക്ഷൻ 1: 🏆 ടോപ്പ് 10 സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (Rank 1 മുതൽ 10 വരെ). ഏറ്റവും വിജയസാധ്യതയുള്ളത് (Highest Probability of 3-5% profit in 1 week) ഒന്നാമതായി നൽകുക.
-       - സെക്ഷൻ 2: 🚀 5 ഹൈ മൊമെന്റം സ്റ്റോക്കുകൾ (High RSI & Strong Uptrend).
-       - സെക്ഷൻ 3: 💥 5 ഹൈ വോളിയം ബ്രേക്ക്ഔട്ട് സ്റ്റോക്കുകൾ (RVOL > 1.5x).
-       - സെക്ഷൻ 4: 🦀 5 ക്രാബ് സോൺ റീബൗണ്ട് സ്റ്റോക്കുകൾ. ('Consolid Range' വളരെ കുറവുള്ളതും എന്നാൽ ഇപ്പോൾ RSI കുതിച്ചുയർന്ന് അപ്പർ ട്രെൻഡിലേക്ക് മാറുന്നതുമായ 5 സ്റ്റോക്കുകൾ).
+    🚨 കർശനമായ നിർദ്ദേശങ്ങൾ (CRITICAL INSTRUCTIONS):
+    1. ഓരോ സ്റ്റോക്കിനും നിർബന്ധമായും താഴെ പറയുന്ന കാര്യങ്ങൾ വിശദമായി (Detailed Analysis) നൽകിയിരിക്കണം:
+       - AI Conviction Rate (ഉദാ: 92% Conviction) & Upside Probability (ഉദാ: 85% Probability).
+       - Detailed Technical Rationale: എന്തുകൊണ്ടാണ് ഈ സ്റ്റോക്ക് തിരഞ്ഞെടുത്തത്? (RSI, RVOL, 20 EMA, Consolidation എന്നിവയുടെ സ്വാധീനം കൃത്യമായി വിശദീകരിക്കുക).
+       - Trade Setup: Entry Zone, Target Price (Exit), Stop Loss എന്നിവ വ്യക്തമായി കാണിക്കുക.
+    
+    2. കൃത്യം 25 സ്റ്റോക്കുകൾ 4 വിഭാഗങ്ങളിലായി നൽകുക:
+       - 🏆 ടോപ്പ് 10 സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (Rank 1 മുതൽ 10 വരെ).
+       - 🚀 5 ഹൈ മൊമെന്റം സ്റ്റോക്കുകൾ.
+       - 💥 5 ഹൈ വോളിയം ബ്രേക്ക്ഔട്ട് സ്റ്റോക്കുകൾ.
+       - 🦀 5 ക്രാബ് സോൺ റീബൗണ്ട് സ്റ്റോക്കുകൾ.
+    
+    3. റീഡബിലിറ്റി: കാർഡുകൾ ഡാർക്ക് ബാക്ക്ഗ്രൗണ്ട് ആണെങ്കിൽ അക്ഷരങ്ങൾ നിർബന്ധമായും പൂർണ്ണ വെള്ള നിറത്തിൽ (White Text) നൽകുക. കളർ കോഡിംഗ് പാലിക്കുക.
 
-    ഓരോ സ്റ്റോക്കിനും Entry Zone, Target (3-5%), Stop Loss എന്നിവ നൽകുക.
-
-    📊 സാങ്കേതിക ഡാറ്റ (RSI, RVOL, Consolid Range):
+    📊 സാങ്കേതിക ഡാറ്റ:
     {chr(10).join(swing_candidates)}
 
     💎 Moneycontrol Pro ഡാറ്റ:
     {chr(10).join(mc_news)}
 
-    Modern Dark HTML കാർഡുകൾ ഉപയോഗിച്ച് മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
+    ഈ ഡാറ്റ വെച്ച് വളരെ വിശദമായ, പ്രൊഫഷണൽ അനാലിസിസ് അടങ്ങിയ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
     """
     
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🇮🇳 Indian Market: Pro Swing Picks & Crab Zone Rebounds", response.text.replace("```html", "").replace("```", "").strip()
+    return "🇮🇳 Indian Market: Advanced AI Swing Radar (Detailed Analysis)", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 6. US MARKET SCANNER ====================
 def fetch_us_market():
@@ -175,26 +179,30 @@ def fetch_us_market():
     us_swing_candidates = scan_tickers_for_swing(us_tickers)
     
     prompt = f"""
-    നിങ്ങൾ ഒരു Wall Street സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. താഴെ നൽകിയിരിക്കുന്ന യുഎസ് ഡാറ്റ വിശകലനം ചെയ്യുക.
+    നിങ്ങൾ ഒരു Wall Street സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. താഴെ നൽകിയിരിക്കുന്ന യുഎസ് ഡാറ്റ വിശദമായി വിശകലനം ചെയ്യുക.
     
-    🚨 കർത്തശനമായ നിർദ്ദേശങ്ങൾ (CRITICAL INSTRUCTIONS):
-    1. STOCK NAME & SYMBOL: ഓരോ സ്റ്റോക്കിന്റെയും പേരും സിംബലും കാർഡിന്റെ ഹെഡിംഗിൽ നിർബന്ധമായും നൽകിയിരിക്കണം. (ഉദാഹരണത്തിന്: <h3>NVIDIA (NVDA)</h3>). ഇത് ഒഴിവാക്കരുത്!
-    2. കൃത്യം 25 സ്റ്റോക്കുകൾ താഴെ പറയുന്ന 4 വിഭാഗങ്ങളിലായി തരംതിരിക്കുക:
-       - സെക്ഷൻ 1: 🏆 ടോപ്പ് 10 സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (Rank 1 മുതൽ 10 വരെ). ഏറ്റവും വിജയസാധ്യതയുള്ളത് (Highest Probability of 3-5% profit in 1 week) ഒന്നാമതായി നൽകുക.
-       - സെക്ഷൻ 2: 🚀 5 ഹൈ മൊമെന്റം സ്റ്റോക്കുകൾ (High RSI & Strong Uptrend).
-       - സെക്ഷൻ 3: 💥 5 ഹൈ വോളിയം ബ്രേക്ക്ഔട്ട് സ്റ്റോക്കുകൾ (RVOL > 1.5x).
-       - സെക്ഷൻ 4: 🦀 5 ക്രാബ് സോൺ റീബൗണ്ട് സ്റ്റോക്കുകൾ. ('Consolid Range' വളരെ കുറവുള്ളതും എന്നാൽ ഇപ്പോൾ RSI കുതിച്ചുയർന്ന് അപ്പർ ട്രെൻഡിലേക്ക് മാറുന്നതുമായ 5 സ്റ്റോക്കുകൾ).
+    🚨 കർശനമായ നിർദ്ദേശങ്ങൾ (CRITICAL INSTRUCTIONS):
+    1. ഓരോ സ്റ്റോക്കിനും നിർബന്ധമായും താഴെ പറയുന്ന കാര്യങ്ങൾ വിശദമായി (Detailed Analysis) നൽകിയിരിക്കണം:
+       - AI Conviction Rate (ഉദാ: 92% Conviction) & Upside Probability (ഉദാ: 85% Probability).
+       - Detailed Technical Rationale: എന്തുകൊണ്ടാണ് ഈ സ്റ്റോക്ക് തിരഞ്ഞെടുത്തത്? (RSI, RVOL, 20 EMA, Consolidation എന്നിവയുടെ സ്വാധീനം കൃത്യമായി വിശദീകരിക്കുക).
+       - Trade Setup: Entry Zone, Target Price (Exit), Stop Loss എന്നിവ വ്യക്തമായി കാണിക്കുക.
+    
+    2. കൃത്യം 25 സ്റ്റോക്കുകൾ 4 വിഭാഗങ്ങളിലായി നൽകുക:
+       - 🏆 ടോപ്പ് 10 സ്വിംഗ് ട്രേഡ് പിക്കുകൾ (Rank 1 മുതൽ 10 വരെ).
+       - 🚀 5 ഹൈ മൊമെന്റം സ്റ്റോക്കുകൾ.
+       - 💥 5 ഹൈ വോളിയം ബ്രേക്ക്ഔട്ട് സ്റ്റോക്കുകൾ.
+       - 🦀 5 ക്രാബ് സോൺ റീബൗണ്ട് സ്റ്റോക്കുകൾ.
+    
+    3. റീഡബിലിറ്റി: കാർഡുകൾ ഡാർക്ക് ബാക്ക്ഗ്രൗണ്ട് ആണെങ്കിൽ അക്ഷരങ്ങൾ നിർബന്ധമായും പൂർണ്ണ വെള്ള നിറത്തിൽ (White Text) നൽകുക. കളർ കോഡിംഗ് പാലിക്കുക.
 
-    ഓരോ സ്റ്റോക്കിനും Entry Zone, Target (3-5%), Stop Loss എന്നിവ നൽകുക.
-
-    📊 യുഎസ് സാങ്കേതിക ഡാറ്റ (RSI, RVOL, Consolid Range):
+    📊 യുഎസ് സാങ്കേതിക ഡാറ്റ:
     {chr(10).join(us_swing_candidates)}
 
-    Modern Dark HTML കാർഡുകൾ ഉപയോഗിച്ച് മനോഹരമായ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
+    ഈ ഡാറ്റ വെച്ച് വളരെ വിശദമായ, പ്രൊഫഷണൽ അനാലിസിസ് അടങ്ങിയ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
     """
 
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🇺🇸 US Market: Pro Swing Picks & Crab Zone Rebounds", response.text.replace("```html", "").replace("```", "").strip()
+    return "🇺🇸 US Market: Advanced AI Swing Radar (Detailed Analysis)", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 7. ഇമെയിൽ അയക്കൽ ====================
 def send_email(subject, html_content):
@@ -217,4 +225,4 @@ if __name__ == "__main__":
         subject, content = fetch_indian_market()
 
     send_email(subject, content)
-    print(f"✅ {market_type.upper()} സ്വിംഗ് ട്രേഡിംഗ് റിപ്പോർട്ട് (10+5+5+5 Crab Zone) വിജയകരമായി അയച്ചു!")
+    print(f"✅ {market_type.upper()} സ്വിംഗ് ട്രേഡിംഗ് റിപ്പോർട്ട് (Detailed AI Analysis) വിജയകരമായി അയച്ചു!")
