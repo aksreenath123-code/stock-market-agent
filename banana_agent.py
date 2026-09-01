@@ -31,7 +31,7 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
-# 🚨 ERROR FIX: കുക്കിയിലെ അനാവശ്യ സ്പേസുകളും പുതിയ ലൈനുകളും ഇവിടെ തനിയെ ഒഴിവാക്കുന്നു
+# കുക്കിയിലെ അനാവശ്യ സ്പേസുകളും പുതിയ ലൈനുകളും ഒഴിവാക്കുന്നു
 raw_cookie = os.getenv("BANANA_COOKIE")
 BANANA_COOKIE = str(raw_cookie).strip().replace('\n', '').replace('\r', '') if raw_cookie else None
 
@@ -71,11 +71,11 @@ def fetch_banana_data():
 
 # ==================== 4. HIGH CONVICTION AI QUANT ENGINE (>90% WIN-RATE) ====================
 def analyze_data(raw_data):
-    print("🧠 90%+ Win-Rate കൺവിക്ഷൻ & ഗ്ലോബൽ മാക്രോ അനാലിസിസ് റൺ ചെയ്യുന്നു...")
+    print("🧠 90%+ Win-Rate കൺവിക്ഷൻ അനാലിസിസും മാസ്റ്റർ ലിസ്റ്റും തയ്യാറാക്കുന്നു...")
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     prompt = f"""
-    നിങ്ങൾ ഒരു എലൈറ്റ് ലെവൽ ക്വാണ്ടിറ്റേറ്റീവ് & മാക്രോ-ടെക്നിക്കൽ സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. നിങ്ങളുടെ പ്രധാന ലക്ഷ്യം നാളെ അപ്‌ട്രെൻഡിലേക്ക് പോകാൻ 90%-ലധികം വിജയസാധ്യതയുള്ള സ്റ്റോക്കുകൾ മാത്രം കണ്ടെത്തുക എന്നതാണ്.
+    നിങ്ങൾ ഒരു എലൈറ്റ് ലെവൽ ക്വാണ്ടിറ്റേറ്റീവ് & മാക്രോ-ടെക്നിക്കൽ സ്വിംഗ് ട്രേഡിംഗ് സ്പെഷ്യലിസ്റ്റാണ്. 
     ഇന്നത്തെ തീയതി: {current_date}.
     
     താഴെ നൽകിയിരിക്കുന്നത് 'Banana Patterns' വെബ്സൈറ്റിൽ നിന്നുള്ള 'Forming', 'Climbing', 'Fresh breakouts' ഡാറ്റയാണ്:
@@ -83,30 +83,26 @@ def analyze_data(raw_data):
     {raw_data}
     -----------------------------------------
 
-    🚨 നിങ്ങളുടെ അനാലിസിസ് മാനദണ്ഡങ്ങൾ (ULTIMATE FILTERING STRICT RULES):
-    1. **CROSS-REFERENCE WITH GLOBAL DATA:** ഈ ഡാറ്റയിൽ നിന്നും ലഭിക്കുന്ന സ്റ്റോക്ക് ടിക്കറുകളെ നിലവിലെ ഗ്ലോബൽ മാർക്കറ്റ് എൻവയോൺമെന്റ് (Global News, Sector Sentiment) എന്നിവയുമായി കൂട്ടിവായിക്കുക. മാർക്കറ്റ് പ്രതികൂലമാണെങ്കിൽ ആ സെക്ടറിലെ സ്റ്റോക്കുകൾ ഒഴിവാക്കുക.
-    2. **MULTI-TIMEFRAME & ADVANCED TECHNICALS:** സ്ക്രാപ്പ് ചെയ്ത ചാർട്ട് ഡാറ്റയോടൊപ്പം ആ സ്റ്റോക്കുകളുടെ Weekly & Daily ട്രെൻഡുകൾ വിലയിരുത്തുക. 20, 50, 200 EMAs, RSI (55-68 zone), MACD crossovers, Volume surges എന്നിവ പൂർണ്ണമായും അനുകൂലമാണെന്ന് ഉറപ്പുവരുത്തുക.
-    3. **EXACTLY 15 STOCKS:** മേൽപ്പറഞ്ഞ എല്ലാ കടമ്പകളും കടന്ന, ട്രേഡ് ചെയ്യാൻ ഏറ്റവും അനുയോജ്യമായ:
-       - 'Forming' കാറ്റഗറിയിൽ നിന്നും 5 സ്റ്റോക്കുകൾ.
-       - 'Climbing' കാറ്റഗറിയിൽ നിന്നും 5 സ്റ്റോക്കുകൾ.
-       - 'Fresh breakouts' കാറ്റഗറിയിൽ നിന്നും 5 സ്റ്റോക്കുകൾ.
-       (ഇങ്ങനെ മൊത്തം കൃത്യം 15 സ്റ്റോക്കുകൾ മാത്രം തിരഞ്ഞെടുക്കുക).
+    🚨 നിങ്ങളുടെ അനാലിസിസ് ടാസ്ക്കുകൾ:
+    നിങ്ങളുടെ HTML ഔട്ട്പുട്ടിൽ കൃത്യമായി 2 ഭാഗങ്ങൾ (Sections) ഉണ്ടായിരിക്കണം.
 
-    📋 OUTPUT FORMAT (EXCEL-STYLE HTML SPREADSHEET):
-    മനോഹരമായ, പ്രൊഫഷണൽ Dark/Navy ആക്സെന്റോടുകൂടിയ ഒരു HTML ടേബിൾ രൂപത്തിൽ മാത്രം മറുപടി നൽകുക. കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം തരുക. 
-    
-    ടേബിളിൽ താഴെ പറയുന്ന 7 കോളങ്ങൾ നിർബന്ധമായും ഉണ്ടായിരിക്കണം:
-    1. **Stock Name & Ticker**
-    2. **Category** (Forming / Climbing / Fresh Breakout)
-    3. **Global & Sector Sentiment** (ഇപ്പോഴത്തെ ന്യൂസ്/സെക്ടർ സപ്പോർട്ട്)
-    4. **Deep Technical Confluence** (Weekly Trend, Daily EMA20/50, RSI, MACD, Volume)
-    5. **Trigger / Entry Point (₹)**
-    6. **Target (5-10% Gain) & Strict Stop Loss (Max 2-3% Risk)**
-    7. **Conviction Level & Trade Rationale** (>90% വിൻ-റേറ്റ് എങ്ങനെ ഉറപ്പാക്കുന്നു?)
+    **ഭാഗം 1: SECTION 1 - TOP 15 ELITE PICKS (>90% CONVICTION)**
+    - "<h3>1. The Ultimate 15 Swing Setups</h3>" എന്ന് ഹെഡിങ് നൽകുക.
+    - ഗ്ലോബൽ മാർക്കറ്റ് സെന്റിമെന്റ്, 20/50/200 EMAs, RSI, MACD, Volume എന്നിവ വെച്ച് അനലൈസ് ചെയ്ത് കൃത്യം 15 സ്റ്റോക്കുകൾ (Forming-ൽ നിന്ന് 5, Climbing-ൽ നിന്ന് 5, Fresh breakouts-ൽ നിന്ന് 5) തിരഞ്ഞെടുക്കുക.
+    - ഇതിനായി താഴെ പറയുന്ന 7 കോളങ്ങളുള്ള ഒരു ടേബിൾ നിർമ്മിക്കുക:
+      | Stock Name & Ticker | Category | Global & Sector Sentiment | Deep Technical Confluence | Trigger / Entry Point (₹) | Target & Strict Stop Loss | Conviction Level & Rationale |
+
+    **ഭാഗം 2: SECTION 2 - COMPLETE MASTER LIST (ALL STOCKS)**
+    - "<h3>2. Complete Master List of All Stocks</h3>" എന്ന് ഹെഡിങ് നൽകുക.
+    - ഡാറ്റയിൽ നിന്നും നിങ്ങൾക്ക് കണ്ടെത്താൻ കഴിഞ്ഞ **എല്ലാ സ്റ്റോക്കുകളുടെയും പേരുകൾ/ടിക്കറുകൾ** കാറ്റഗറി തിരിച്ച് (Forming, Climbing, Fresh Breakouts) ഇവിടെ ലിസ്റ്റ് ചെയ്യുക.
+    - ഈ ഭാഗത്ത് യാതൊരുവിധ അനാലിസിസും ആവശ്യമില്ല. വെറുമൊരു ലളിതമായ ടേബിളിലോ അല്ലെങ്കിൽ ബുള്ളറ്റ് പോയിന്റുകളിലോ (ul/li) സ്റ്റോക്കുകളുടെ പേരുകൾ മാത്രം നൽകുക.
+
+    📋 OUTPUT FORMAT:
+    മനോഹരമായ, പ്രൊഫഷണൽ HTML കോഡ് മാത്രം മറുപടി നൽകുക. കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം തരുക. 
     """
     
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🚀 Banana Patterns: Ultimate Top 15 Pick (>90% Conviction)", response.text.replace("```html", "").replace("```", "").strip()
+    return "🚀 Banana Patterns: Top 15 Elite Picks & Complete Master List", response.text.replace("```html", "").replace("```", "").strip()
 
 # ==================== 5. ഇമെയിൽ അയക്കൽ & ഫെയിലിയർ അലേർട്ട് ====================
 def send_email(subject, html_content):
@@ -118,16 +114,18 @@ def send_email(subject, html_content):
     
     wrapped_html = f"""
     <html><head><style>
-      table {{ border-collapse: collapse; width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 13px; }}
+      table {{ border-collapse: collapse; width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 13px; margin-bottom: 25px; }}
       th, td {{ border: 1px solid #dfe6e9; text-align: left; padding: 10px; vertical-align: top; line-height: 1.4; }}
       th {{ background-color: #1e272e; color: #f1c40f; font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }}
       tr:nth-child(even) {{ background-color: #f8f9fa; }}
       tr:nth-child(odd) {{ background-color: #ffffff; }}
       .conviction {{ color: #27ae60; font-weight: bold; }}
       .stoploss {{ color: #c0392b; font-weight: bold; }}
+      h2 {{ color: #1e272e; border-bottom: 3px solid #f1c40f; padding-bottom: 8px; }}
+      h3 {{ color: #d35400; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #bdc3c7; padding-bottom: 5px; }}
     </style></head><body>
-    <h2 style='color: #1e272e; border-bottom: 3px solid #f1c40f; padding-bottom: 8px;'>🍌 Banana Patterns: The Ultimate 15 Swing Setups</h2>
-    <p style='color: #636e72; font-size: 13px; margin-bottom: 18px;'>* Filtered strictly with Global Sentiment, Multi-Timeframe Confluence, EMA/RSI/MACD momentum, and Volume. Exactly 5 Picks from each category targeting >90% win-rate.</p>
+    <h2>🍌 Banana Patterns: Elite Daily Report</h2>
+    <p style='color: #636e72; font-size: 13px; margin-bottom: 18px;'>* Includes Top 15 High-Conviction setups and a Complete Master List of all scraped stocks.</p>
     {html_content}
     </body></html>
     """
@@ -173,7 +171,7 @@ if __name__ == "__main__":
             try:
                 subject, content = analyze_data(extracted_data)
                 send_email(subject, content)
-                print("✅ Ultimate Top 15 റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
+                print("✅ Ultimate Top 15 & Master List റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
                 success = True
                 break 
             except Exception as e:
