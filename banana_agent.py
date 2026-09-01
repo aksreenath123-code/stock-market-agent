@@ -104,4 +104,98 @@ def analyze_data(raw_data):
     """
     
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🚀 Banana Patterns: Top 15 Elite Picks (Color Coded)", response.text.replace("```html", "").replace("
+    return "🚀 Banana Patterns: Top 15 Elite Picks (Color Coded)", response.text.replace("```html", "").replace("```", "").strip()
+
+# ==================== 5. ഇമെയിൽ അയക്കൽ & ഫെയിലിയർ അലേർട്ട് ====================
+def send_email(subject, html_content):
+    print("📧 ഇമെയിൽ അയക്കുന്നു...")
+    msg = MIMEMultipart("alternative")
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECEIVER_EMAIL
+    msg["Subject"] = subject
+    
+    wrapped_html = f"""
+    <html><head><style>
+      body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333333; padding: 10px; }}
+      .container {{ background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }}
+      table {{ border-collapse: collapse; width: 100%; margin-bottom: 25px; background-color: #ffffff; }}
+      th, td {{ border: 1px solid #e0e0e0; text-align: left; padding: 14px; vertical-align: top; line-height: 1.5; color: #333333; font-size: 14px; }}
+      th {{ background-color: #2c3e50; color: #ffffff; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }}
+      tr:nth-child(even) {{ background-color: #f8f9fa; }}
+      tr:hover {{ background-color: #f1f3f5; }}
+      
+      /* 🎨 കളർ കോഡിംഗ് ബാഡ്ജുകൾ (Color Badges) */
+      .category-forming {{ background-color: #e3f2fd; color: #0d47a1; font-weight: bold; padding: 5px 10px; border-radius: 4px; display: inline-block; border: 1px solid #bbdefb; }}
+      .category-climbing {{ background-color: #fff3e0; color: #e65100; font-weight: bold; padding: 5px 10px; border-radius: 4px; display: inline-block; border: 1px solid #ffe0b2; }}
+      .category-fresh {{ background-color: #e8f5e9; color: #1b5e20; font-weight: bold; padding: 5px 10px; border-radius: 4px; display: inline-block; border: 1px solid #c8e6c9; }}
+      
+      h2 {{ color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 8px; margin-top: 0; }}
+      h3 {{ color: #2980b9; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #bdc3c7; padding-bottom: 5px; }}
+      p {{ color: #555555; }}
+    </style></head><body>
+    <div class="container">
+        <h2>🍌 Banana Patterns: Elite Daily Report</h2>
+        <p><i>* Highly readable format. Green/Orange/Blue badges represent different categories.</i></p>
+        {html_content}
+    </div>
+    </body></html>
+    """
+    msg.attach(MIMEText(wrapped_html, "html", "utf-8"))
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+        server.send_message(msg)
+
+def send_failure_email(error_message):
+    print("🚨 ഫെയിലിയർ അലേർട്ട് മെയിൽ അയക്കുന്നു...")
+    msg = MIMEMultipart("alternative")
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECEIVER_EMAIL
+    msg["Subject"] = "❌ ALERT: Banana Patterns Analysis Failed"
+    html_content = f"""
+    <html><body style="font-family: Arial, sans-serif;">
+    <h3 style="color: #c0392b;">⚠️ Banana Agent Failed (After 3 Retries)</h3>
+    <pre style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 4px;">{error_message}</pre>
+    <p>കുക്കി എക്സ്പയർ ആയോ എന്ന് പരിശോധിക്കുക.</p>
+    </body></html>
+    """
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+        server.send_message(msg)
+
+# ==================== 6. MAIN EXECUTION WITH 3-RETRY LOGIC ====================
+if __name__ == "__main__":
+    if not BANANA_COOKIE:
+        print("❌ BANANA_COOKIE കാണുന്നില്ല! GitHub Secrets പരിശോധിക്കുക.")
+        send_failure_email("BANANA_COOKIE secret is missing in GitHub repository.")
+        sys.exit(1)
+        
+    extracted_data = fetch_banana_data()
+    
+    if extracted_data.strip():
+        max_retries = 3
+        success = False
+        last_error = ""
+        
+        for attempt in range(max_retries):
+            try:
+                subject, content = analyze_data(extracted_data)
+                send_email(subject, content)
+                print("✅ Readable Top 15 & Master List റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
+                success = True
+                break 
+            except Exception as e:
+                last_error = str(e)
+                print(f"⚠️ Attempt {attempt + 1} പരാജയപ്പെട്ടു: {e}")
+                if attempt < max_retries - 1:
+                    print("⏳ 1 മിനിറ്റിനുശേഷം റീട്രൈ ചെയ്യുന്നു (Waiting 60 seconds)...")
+                    time.sleep(60)
+        
+        if not success:
+            print("❌ 3 തവണ ശ്രമിച്ചിട്ടും പരാജയപ്പെട്ടു.")
+            send_failure_email(last_error)
+            sys.exit(1)
+    else:
+        print("❌ സ്ക്രാപ്പിംഗ് വഴി ഡാറ്റ ലഭിച്ചില്ല.")
+        send_failure_email("Scraping returned zero data. Please check BANANA_COOKIE.")
+        sys.exit(1)
