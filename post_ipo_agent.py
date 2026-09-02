@@ -32,8 +32,9 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
-# നിങ്ങൾ നിർദ്ദേശിച്ച പുതിയ മണികൺട്രോൾ കുക്കി ലോജിക്
-MONEYCONTROL_COOKIE = os.getenv("MONEYCONTROL_COOKIE", "")
+# 🚨 ERROR FIX: കുക്കിയിലെ അനാവശ്യ സ്പേസുകളും പുതിയ ലൈനുകളും തനിയെ ഒഴിവാക്കുന്നു
+raw_mc_cookie = os.getenv("MONEYCONTROL_COOKIE", "")
+MONEYCONTROL_COOKIE = str(raw_mc_cookie).strip().replace('\n', '').replace('\r', '')
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
