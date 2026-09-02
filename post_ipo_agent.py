@@ -49,7 +49,6 @@ def fetch_post_ipo_performance():
     print("🌐 InvestorGain-ൽ നിന്നും Post-IPO പെർഫോമൻസ് ഡാറ്റ ശേഖരിക്കുന്നു...")
     url = "https://www.investorgain.com/report/live-ipo-performance/332/"
     
-    # 1. ആദ്യം Cloudscraper ഉപയോഗിച്ച് ശ്രമിക്കുന്നു
     scraper = cloudscraper.create_scraper()
     for attempt in range(2):
         try:
@@ -70,7 +69,6 @@ def fetch_post_ipo_performance():
             pass
         time.sleep(random.uniform(3, 6))
 
-    # 2. Cloudscraper പരാജയപ്പെട്ടാൽ സാധാരണ Requests ഉപയോഗിച്ച് ശ്രമിക്കുന്നു (Fallback)
     print("⚠️ Cloudscraper പരാജയപ്പെട്ടു. ബദൽ മാർഗ്ഗം (Requests) ഉപയോഗിക്കുന്നു...")
     for attempt in range(2):
         headers = {
@@ -104,7 +102,6 @@ def fetch_moneycontrol_earnings():
         print("⚠️ MONEYCONTROL_COOKIE ലഭ്യമല്ല.")
         return ""
         
-    # അപ്ഡേറ്റ് ചെയ്ത പുതിയ മണികൺട്രോൾ URL-കൾ (404 ഒഴിവാക്കാൻ)
     mc_urls = [
         "https://www.moneycontrol.com/markets/earnings/",
         "https://www.moneycontrol.com/stocks/marketstats/bse-results/",
@@ -145,7 +142,7 @@ def fetch_moneycontrol_earnings():
             
     return ""
 
-# ==================== 4. AI ANALYSIS MODULES ====================
+# ==================== 4. AI ANALYSIS MODULES (WITH RETRY LOGIC) ====================
 def analyze_post_ipo_trend(raw_data):
     print("🧠 Post-IPO ട്രെൻഡ് വിശകലനം ചെയ്യുന്നു...")
     prompt = f"""
@@ -155,8 +152,17 @@ def analyze_post_ipo_trend(raw_data):
     നിങ്ങളുടെ ടാസ്ക്: കഴിഞ്ഞ 3 മാസത്തിനുള്ളിൽ ലിസ്റ്റ് ചെയ്ത, നിലവിൽ Base Breakout അല്ലെങ്കിൽ മികച്ച Uptrend കാണിക്കുന്ന മികച്ച 5 സ്റ്റോക്കുകൾ കണ്ടെത്തുക.
     OUTPUT FORMAT: ഒരു HTML ടേബിൾ (കോളങ്ങൾ: Stock Name, Listing Date, Issue vs CMP, Trend Analysis, AI Verdict). കോഡ് ബ്ലോക്കിൽ മാത്രം മറുപടി നൽകുക. ഇൻലൈൻ CSS വേണ്ട.
     """
-    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return response.text.replace("```html", "").replace("```", "").strip()
+    
+    # 🚨 API Disconnect ഒഴിവാക്കാനുള്ള റീട്രൈ ലോജിക്
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+            return response.text.replace("```html", "").replace("```", "").strip()
+        except Exception as e:
+            print(f"⚠️ API Error (Post-IPO attempt {attempt+1}): {e}")
+            time.sleep(5) # എറർ വന്നാൽ 5 സെക്കൻഡ് കാത്തിരിക്കുന്നു
+            
+    raise Exception("Gemini API completely failed for Post-IPO analysis after 3 retries.")
 
 def analyze_earnings_momentum(raw_data):
     print("🧠 കോർപ്പറേറ്റ് റിസൾട്ടുകൾ & YoY/QoQ സ്വിംഗ് പ്രോബബിലിറ്റി വിശകലനം ചെയ്യുന്നു...")
@@ -169,10 +175,19 @@ def analyze_earnings_momentum(raw_data):
     കോളങ്ങൾ: | Stock Name | Result Highlights | Swing Setup (Breakout/Volume) | Conviction Rate | AI Action |
     കോഡ് ബ്ലോക്കിൽ മാത്രം മറുപടി നൽകുക. ഇൻലൈൻ CSS വേണ്ട.
     """
-    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return response.text.replace("```html", "").replace("```", "").strip()
+    
+    # 🚨 API Disconnect ഒഴിവാക്കാനുള്ള റീട്രൈ ലോജിക്
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+            return response.text.replace("```html", "").replace("```", "").strip()
+        except Exception as e:
+            print(f"⚠️ API Error (Earnings attempt {attempt+1}): {e}")
+            time.sleep(5)
+            
+    raise Exception("Gemini API completely failed for Earnings analysis after 3 retries.")
 
-# ==================== 5. EMAIL COMPOSITION (HIGH CONTRAST) ====================
+# ==================== 5. EMAIL COMPOSITION ====================
 def send_combined_email(ipo_html, earnings_html):
     print("📧 സംയോജിപ്പിച്ച മാസ്റ്റർ റിപ്പോർട്ട് മെയിൽ അയക്കുന്നു...")
     msg = MIMEMultipart("alternative")
