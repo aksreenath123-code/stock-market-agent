@@ -8,8 +8,8 @@ import time
 import random
 from datetime import datetime
 
-# ==================== 1. ലൈബ്രറി ഇൻസ്റ്റാളേഷൻ ====================
-REQUIRED_PACKAGES = ["requests", "google-genai", "beautifulsoup4"]
+# ==================== 1. ലൈബ്രറി ഇൻസ്റ്റാളേഷൻ (Cloudscraper ഉൾപ്പെടെ) ====================
+REQUIRED_PACKAGES = ["requests", "google-genai", "beautifulsoup4", "cloudscraper"]
 
 def install_missing_packages():
     for package in REQUIRED_PACKAGES:
@@ -23,36 +23,37 @@ def install_missing_packages():
 install_missing_packages()
 
 import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 from google import genai
 
-# ==================== 2. API കോൺഫിഗറേഷൻ ====================
+# ==================== 2. API കോൺഫിഗറേഷൻ & കുക്കി ====================
 GEMINI_API_KEY = os.getenv("IPO_GEMINI_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
-# 🚨 ERROR FIX: കുക്കിയിലെ അനാവശ്യ സ്പേസുകളും പുതിയ ലൈനുകളും തനിയെ ഒഴിവാക്കുന്നു
+# മണികൺട്രോൾ കുക്കി ഫോർമാറ്റ് കൃത്യമാക്കുന്നു
 raw_mc_cookie = os.getenv("MONEYCONTROL_COOKIE", "")
 MONEYCONTROL_COOKIE = str(raw_mc_cookie).strip().replace('\n', '').replace('\r', '')
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ==================== 3. ANTI-BOT SCRAPING MODULES ====================
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0"
-]
+# ആന്റി-ബോട്ട് സ്ക്രാപ്പർ തയ്യാറാക്കുന്നു
+scraper = cloudscraper.create_scraper(browser={
+    'browser': 'chrome',
+    'platform': 'windows',
+    'desktop': True
+})
 
+# ==================== 3. ANTI-BOT SCRAPING MODULES ====================
 def fetch_post_ipo_performance():
     print("🌐 InvestorGain-ൽ നിന്നും Post-IPO പെർഫോമൻസ് ഡാറ്റ ശേഖരിക്കുന്നു...")
     url = "https://www.investorgain.com/report/live-ipo-performance/332/"
     
     for attempt in range(3):
-        headers = {"User-Agent": random.choice(USER_AGENTS)}
         try:
-            res = requests.get(url, headers=headers, timeout=20)
+            res = scraper.get(url, timeout=30)
             if res.status_code == 200:
                 soup = BeautifulSoup(res.text, "html.parser")
                 table = soup.find('table')
@@ -61,7 +62,14 @@ def fetch_post_ipo_performance():
                     for row in table.find_all('tr'):
                         cols = [col.get_text(strip=True) for col in row.find_all(['th', 'td'])]
                         if cols: scraped_data += " | ".join(cols) + "\n"
-                return scraped_data[:25000]
+                
+                if len(scraped_data) > 100:
+                    print("✅ Post-IPO ഡാറ്റ ലഭിച്ചു.")
+                    return scraped_data[:25000]
+                else:
+                    print("⚠️ ഡാറ്റ ലഭിച്ചു, പക്ഷേ ടേബിൾ ശൂന്യമാണ്.")
+            else:
+                print(f"⚠️ InvestorGain HTTP Error: {res.status_code} (Attempt {attempt+1})")
         except Exception as e:
             print(f"⚠️ Post-IPO സ്ക്രാപ്പിംഗ് ശ്രമം {attempt+1} പരാജയപ്പെട്ടു: {e}")
         time.sleep(random.uniform(5, 10))
@@ -75,15 +83,15 @@ def fetch_moneycontrol_earnings():
         
     url = "https://www.moneycontrol.com/stocks/marketinfo/results/"
     
+    headers = {
+        "Cookie": MONEYCONTROL_COOKIE,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Referer": "https://www.moneycontrol.com/"
+    }
+    
     for attempt in range(3):
-        headers = {
-            "User-Agent": random.choice(USER_AGENTS),
-            "Cookie": MONEYCONTROL_COOKIE,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-        }
         try:
-            time.sleep(random.uniform(3, 7))
-            res = requests.get(url, headers=headers, timeout=25)
+            res = scraper.get(url, headers=headers, timeout=30)
             if res.status_code == 200:
                 soup = BeautifulSoup(res.text, "html.parser")
                 tables = soup.find_all('table')
@@ -92,8 +100,14 @@ def fetch_moneycontrol_earnings():
                     for row in table.find_all('tr'):
                         cols = [col.get_text(strip=True) for col in row.find_all(['th', 'td'])]
                         if cols: scraped_data += " | ".join(cols) + "\n"
+                
                 if len(scraped_data) > 100:
+                    print("✅ Earnings ഡാറ്റ ലഭിച്ചു.")
                     return scraped_data[:25000]
+                else:
+                    print("⚠️ Earnings ഡാറ്റ ലഭിച്ചു, പക്ഷേ ടേബിൾ കണ്ടെത്തിയില്ല. കുക്കി എക്സ്പയർ ആയോ എന്ന് പരിശോധിക്കുക.")
+            else:
+                print(f"⚠️ Moneycontrol HTTP Error: {res.status_code} (Attempt {attempt+1})")
         except Exception as e:
             print(f"⚠️ Earnings സ്ക്രാപ്പിംഗ് ശ്രമം {attempt+1} പരാജയപ്പെട്ടു: {e}")
         time.sleep(random.uniform(5, 12))
@@ -181,7 +195,7 @@ if __name__ == "__main__":
             if earnings_data:
                 earnings_result = analyze_earnings_momentum(earnings_data)
             else:
-                earnings_result = "<p style='color: #b91c1c; font-weight: bold;'>⚠️ Earnings data unavailable. Moneycontrol Cookie might be expired or blocked.</p>"
+                earnings_result = "<p style='color: #b91c1c; font-weight: bold;'>⚠️ Earnings data unavailable. Check Moneycontrol Cookie.</p>"
             
             send_combined_email(ipo_result, earnings_result)
             print("✅ മാസ്റ്റർ റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
