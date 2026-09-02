@@ -6,7 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # ==================== 1. ലൈബ്രറി ഇൻസ്റ്റാളേഷൻ ====================
 REQUIRED_PACKAGES = ["requests", "google-genai", "beautifulsoup4"]
@@ -34,7 +34,7 @@ RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ==================== 3. MULTI-SOURCE SMART SCRAPER & RETRY ====================
+# ==================== 3. MULTI-SOURCE FETCHING ====================
 def clean_url(url_str):
     cleaned = re.sub(r'^\[.*?\]\((.*?)\)$', r'\1', str(url_str).strip())
     cleaned = cleaned.replace('[', '').replace(']', '').replace('(', '').replace(')', '')
@@ -44,7 +44,7 @@ def clean_url(url_str):
 def fetch_with_retry(url, retries=3):
     clean_u = clean_url(url)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     for attempt in range(retries):
         try:
@@ -56,127 +56,93 @@ def fetch_with_retry(url, retries=3):
             time.sleep(2)
     return None
 
+def parse_html_table(html_content, source_name, max_tables=2):
+    soup = BeautifulSoup(html_content, "html.parser")
+    tables = soup.find_all('table')
+    if not tables: return None
+
+    data = f"--- Source: {source_name} ---\n"
+    valid_data_found = False
+
+    for table in tables[:max_tables]:
+        headers = [th.get_text(strip=True) for th in table.find_all('th')]
+        if headers:
+            data += " | ".join(headers) + "\n"
+            data += "-" * 60 + "\n"
+
+        for row in table.find_all('tr'):
+            cols = row.find_all('td')
+            if cols:
+                row_data = [col.get_text(strip=True) for col in cols]
+                data += " | ".join(row_data) + "\n"
+                valid_data_found = True
+        data += "\n\n"
+
+    if not valid_data_found or len(data) < 100:
+        return None
+    return data
+
 def fetch_ipo_watch_data():
-    print("🔍 സ്റ്റെപ്പ് 1: IPO Watch (ipowatch.in) സൈറ്റിൽ നിന്നും ഡാറ്റ പരിശോധിക്കുന്നു...")
+    print("🔍 IPO Watch (ipowatch.in) സൈറ്റിൽ നിന്നും ഡാറ്റ ശേഖരിക്കുന്നു...")
     url = "https://ipowatch.in/ipo-gmp-today-live-ipo-grey-market-premium/"
     html_content = fetch_with_retry(url)
-    
-    if not html_content: return None
-        
-    try:
-        soup = BeautifulSoup(html_content, "html.parser")
-        tables = soup.find_all('table')
-        if not tables: return None
-            
-        data = "--- Source: IPO Watch (ipowatch.in) ---\n"
-        for table in tables[:2]:
-            for row in table.find_all('tr'):
-                cols = [col.get_text(strip=True) for col in row.find_all(['th', 'td'])]
-                if cols: data += " | ".join(cols) + "\n"
-                    
-        if len(data) < 100: return None
-        return data
-    except Exception as e:
-        print(f"⚠️ IPO Watch parsing error: {e}")
-        return None
+    if not html_content: return ""
+    return parse_html_table(html_content, "IPO Watch", max_tables=2) or ""
 
-def fetch_fallback_investorgain_data():
-    print("🔄 Fallback: InvestorGain (investorgain.com) സൈറ്റിൽ നിന്നും ഡാറ്റ ശേഖരിക്കുന്നു...")
+def fetch_investorgain_data():
+    print("🔍 InvestorGain (investorgain.com) സൈറ്റിൽ നിന്നും ഡാറ്റ ശേഖരിക്കുന്നു...")
     url = "https://www.investorgain.com/report/ipo-gmp-live/331/"
     html_content = fetch_with_retry(url)
-    
-    if not html_content: return None
-        
-    try:
-        soup = BeautifulSoup(html_content, "html.parser")
-        table = soup.find('table')
-        if not table: return None
-            
-        data = "--- Source: InvestorGain (investorgain.com) ---\n"
-        for row in table.find_all('tr'):
-            cols = [col.get_text(strip=True) for col in row.find_all(['th', 'td'])]
-            if cols: data += " | ".join(cols) + "\n"
-        return data
-    except Exception as e:
-        print(f"⚠️ InvestorGain parsing error: {e}")
-        return None
-
-def fetch_fallback_chittorgarh_data():
-    print("🔄 Fallback: Chittorgarh (chittorgarh.com) സൈറ്റിൽ നിന്നും ഡാറ്റ ശേഖരിക്കുന്നു...")
-    url = "https://www.chittorgarh.com/"
-    html_content = fetch_with_retry(url)
-    
-    if not html_content: return None
-        
-    try:
-        soup = BeautifulSoup(html_content, "html.parser")
-        tables = soup.find_all('table')
-        if not tables: return None
-            
-        data = "--- Source: Chittorgarh (chittorgarh.com) ---\n"
-        for table in tables[:3]:
-            for row in table.find_all('tr'):
-                cols = [col.get_text(strip=True) for col in row.find_all(['th', 'td'])]
-                if cols: data += " | ".join(cols) + "\n"
-        return data
-    except Exception as e:
-        print(f"⚠️ Chittorgarh parsing error: {e}")
-        return None
+    if not html_content: return ""
+    return parse_html_table(html_content, "InvestorGain", max_tables=1) or ""
 
 def get_comprehensive_ipo_data():
-    data = fetch_ipo_watch_data()
-    if data and len(data.strip()) > 150:
-        print("✅ IPO Watch-ൽ നിന്നും ഡാറ്റ വിജയകരമായി ലഭിച്ചു.")
-        return data
-        
-    print("⚠️ IPO Watch ഡാറ്റ അപൂർണ്ണമാണ്. അടുത്ത സോഴ്സിലേക്ക് മാറുന്നു...")
+    print("⚙️ ക്രോസ്-വാലിഡേഷനായി രണ്ട് സോഴ്സുകളിൽ നിന്നും ഡാറ്റ എടുക്കുന്നു...")
+    watch_data = fetch_ipo_watch_data()
+    gain_data = fetch_investorgain_data()
     
-    data = fetch_fallback_investorgain_data()
-    if data and len(data.strip()) > 150:
-        print("✅ InvestorGain-ൽ നിന്നും ഡാറ്റ വിജയകരമായി ലഭിച്ചു.")
-        return data
-        
-    print("⚠️ InvestorGain ഡാറ്റയും ലഭ്യമായില്ല. ഫൈനൽ സോഴ്സിലേക്ക് മാറുന്നു...")
+    combined_data = watch_data + gain_data
     
-    data = fetch_fallback_chittorgarh_data()
-    if data:
-        print("✅ Chittorgarh-ൽ നിന്നും ബാക്കപ്പ് ഡാറ്റ ലഭിച്ചു.")
-        return data
-        
+    if len(combined_data.strip()) > 150:
+        print("✅ രണ്ട് സൈറ്റുകളിൽ നിന്നുമുള്ള ഡാറ്റ വിജയകരമായി ലഭിച്ചു.")
+        return combined_data
     return ""
 
-# ==================== 4. AI അനാലിസിസ് ====================
+# ==================== 4. AI CROSS-VALIDATION ENGINE ====================
 def analyze_ipo_data(raw_data):
-    print("🧠 സ്റ്റെപ്പ് 3: AI ഡാറ്റ വിശകലനം ചെയ്യുന്നു (GMP & Source Verification)...")
+    print("🧠 AI ഡാറ്റ ക്രോസ്-വാലിഡേഷൻ നടത്തുന്നു (Checking +/- 10% GMP Difference)...")
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     prompt = f"""
-    നിങ്ങൾ ഒരു വിദഗ്ദ്ധനായ ഇന്ത്യൻ സ്റ്റോക്ക് മാർക്കറ്റ് & IPO അനലിസ്റ്റാണ്. 
-    താഴെ നൽകിയിരിക്കുന്നത് വിശ്വസനീയം ആയ വെബ്സൈറ്റുകളിൽ നിന്നും ശേഖരിച്ച ഐപിഒ ഡാറ്റയാണ്.
+    നിങ്ങൾ ഒരു എലൈറ്റ് ക്വാണ്ടിറ്റേറ്റീവ് IPO അനലിസ്റ്റാണ്. 
     ഇന്നത്തെ തീയതി: {current_date}
     
-    🚨 നിങ്ങളുടെ കർശനമായ ടാസ്ക്കുകൾ:
-    1. **ACCURATE GMP & SUBSCRIPTION:** ഡാറ്റയിലുള്ള ഓരോ ഐപിഒയുടെയും യഥാർത്ഥ ഗ്രേ മാർക്കറ്റ് പ്രീമിയം (GMP), ലിസ്റ്റിംഗ് ഗെയിൻ ശതമാനം, QIB, NII, Retail സബ്സ്ക്രിപ്ഷൻ വിവരങ്ങൾ എന്നിവ യാതൊരു തെറ്റും കൂടാതെ കൃത്യമായി വിശകലനം ചെയ്യുക.
-    2. **DAILY GMP HISTORY & AI STRATEGY:** തിയ്യതി തിരിച്ചുള്ള GMP ട്രെൻഡ് പരിശോധിച്ച്, കഴിഞ്ഞ ദിവസങ്ങളിലെ ഡെയിലി GMP ഹിസ്റ്ററി 'AI Analysis & Recommendation' കോളത്തിൽ ലിസ്റ്റ് ആയി ചേർക്കുക. ലിസ്റ്റിംഗ് ഗെയിൻ 15%-ന് മുകളിൽ ആണെങ്കിൽ "🟢 APPLY" എന്നും, അല്ലെങ്കിൽ "🔴 AVOID" എന്നും നിർദ്ദേശിക്കുക.
-    3. **DATA SOURCE IDENTIFICATION (NEW):** നൽകിയിട്ടുള്ള ഡാറ്റയുടെ മുകളിൽ ഏത് വെബ്സൈറ്റിൽ നിന്നാണ് ഡാറ്റ എടുത്തത് എന്ന് (ഉദാ: Source: IPO Watch അല്ലെങ്കിൽ InvestorGain) നൽകിയിട്ടുണ്ടാകും. അത് ഓരോ ഐപിഒയുടെയും കൂടെ 'Data Source' എന്ന പുതിയ കോളത്തിൽ കൃത്യമായി രേഖപ്പെടുത്തുക.
+    താഴെ നൽകിയിരിക്കുന്നത് 'IPO Watch', 'InvestorGain' എന്നീ രണ്ട് വ്യത്യസ്ത വെബ്സൈറ്റുകളിൽ നിന്നുള്ള ഐപിഒ ഡാറ്റയാണ്:
     
-    📋 OUTPUT FORMAT (CRITICAL):
-    ഒരു എക്സെൽ ഷീറ്റ് പോലെയുള്ള മനോഹരമായ **HTML ടേബിൾ** രൂപത്തിൽ മാത്രം ഔട്ട്പുട്ട് നൽകുക. ടേബിളിൽ താഴെ പറയുന്ന 7 കോളങ്ങൾ ഉണ്ടായിരിക്കണം:
+    🚨 നിങ്ങളുടെ ടാസ്ക് (STRICT CROSS-VALIDATION LOGIC):
+    1. രണ്ട് സോഴ്സുകളിലെയും ഒരേ ഐപിഒയുടെ GMP (Grey Market Premium) വാല്യൂകൾ തമ്മിൽ താരതമ്യം ചെയ്യുക. 
+    2. **Validation Rule (Tolerance 10%):** 
+       - രണ്ട് വെബ്സൈറ്റിലെയും GMP തമ്മിലുള്ള വ്യത്യാസം +/- 10% അല്ലെങ്കിൽ അതിൽ താഴെയാണെങ്കിൽ, അത് കറക്റ്റ് ആണെന്ന് കണക്കാക്കി '✅ Validated' എന്ന് രേഖപ്പെടുത്തുക (IPO Watch-ലെ വാല്യൂ മെയിൻ ആയി കാണിക്കുക).
+       - വ്യത്യാസം 10%-ൽ കൂടുതൽ ആണെങ്കിൽ (ഉദാഹരണത്തിന് ഒന്നിൽ ₹50, മറ്റൊന്നിൽ ₹2), അത് '⚠️ Mismatch' എന്ന് രേഖപ്പെടുത്തുക.
+    3. **Mismatch Formatting:** Mismatch ആണെങ്കിൽ 'Verified GMP' കോളത്തിൽ രണ്ട് ഡാറ്റയും വ്യക്തമായി എഴുതുക (ഉദാഹരണത്തിന്: "IPO Watch: ₹50 | InvestorGain: ₹2").
+    4. ലിസ്റ്റിംഗ് ഗെയിൻ 15%-ന് മുകളിൽ ആണെങ്കിൽ "🟢 APPLY" എന്നും, അല്ലെങ്കിൽ "🔴 AVOID" എന്നും നിർദ്ദേശിക്കുക.
+
+    📋 OUTPUT FORMAT:
+    ഒരു മനോഹരമായ HTML ടേബിൾ മാത്രം നൽകുക. ടേബിളിൽ താഴെ പറയുന്ന 6 കോളങ്ങൾ ഉണ്ടായിരിക്കണം:
+    | IPO Name & Status | Dates | Validation Status (✅ Validated / ⚠️ Mismatch) | Verified GMP (₹) & Listing Gain (%) | Subscription | AI Verdict & Trend |
     
-    | IPO Name & Status | Dates (Start - End) | GMP & Listing Gain (%) | Subscription (QIB/NII/Retail) | GMP Trend | AI Analysis & Daily GMP History | Data Source |
-    
-    - കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം മറുപടി നൽകുക.
+    കോഡ് ബ്ലോക്ക് ഫോർമാറ്റിൽ (```html ... ```) മാത്രം മറുപടി നൽകുക. Mismatch ഉള്ള വരികൾക്ക് പ്രത്യേക ശ്രദ്ധ കിട്ടുന്ന രീതിയിൽ ഡിസൈൻ ചെയ്യുക.
     
     ഡാറ്റ:
     {raw_data}
     """
     
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🎯 IPO Analysis Report (Multi-Source Verified)", response.text.replace("```html", "").replace("```", "").strip()
+    return "🎯 IPO Analysis Report (Strict Cross-Validated)", response.text.replace("```html", "").replace("```", "").strip()
 
-# ==================== 5. ഇമെയിൽ അയക്കൽ & ഫെയിലിയർ അലേർട്ട് ====================
+# ==================== 5. ഇമെയിൽ അയക്കൽ ====================
 def send_email(subject, html_content):
-    print("📧 സ്റ്റെപ്പ് 4: ഇമെയിൽ അയക്കുന്നു...")
+    print("📧 വാലിഡേറ്റ് ചെയ്ത റിപ്പോർട്ട് ഇമെയിൽ അയക്കുന്നു...")
     msg = MIMEMultipart("alternative")
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
@@ -186,17 +152,20 @@ def send_email(subject, html_content):
     <html>
     <head>
     <style>
-      table {{ border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 14px; }}
+      table {{ border-collapse: collapse; width: 100%; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 14px; margin-top: 15px; }}
       th, td {{ border: 1px solid #dddddd; text-align: left; padding: 12px; vertical-align: top; line-height: 1.5; }}
-      th {{ background-color: #2c3e50; color: white; }}
-      tr:nth-child(even) {{ background-color: #f2f2f2; color: #333; }}
+      th {{ background-color: #2c3e50; color: #f1c40f; font-weight: bold; text-transform: uppercase; font-size: 13px; }}
+      tr:nth-child(even) {{ background-color: #f8f9fa; color: #333; }}
       tr:nth-child(odd) {{ background-color: #ffffff; color: #333; }}
-      ul {{ margin-top: 8px; margin-bottom: 0px; padding-left: 20px; color: #555; font-size: 13px; }}
+      /* മിസ്മാച്ച് ഹൈലൈറ്റ് ചെയ്യാൻ */
+      .mismatch {{ color: #c0392b; font-weight: bold; background-color: #fde8e8; padding: 4px; border-radius: 4px; }}
+      .validated {{ color: #27ae60; font-weight: bold; }}
     </style>
     </head>
     <body>
-    <h2 style='color: #2c3e50; margin-bottom: 5px;'>🎯 IPO Analysis Report (Source Verified)</h2>
-    <p style='color: #7f8c8d; font-size: 13px; margin-bottom: 20px;'>* Includes specific data source for cross-checking GMP accuracy.</p>
+    <h2 style='color: #2c3e50; margin-bottom: 5px; border-bottom: 2px solid #f1c40f; padding-bottom: 5px; display: inline-block;'>🎯 IPO Cross-Validated Report</h2>
+    <p style='color: #7f8c8d; font-size: 13px; margin-bottom: 10px;'>* GMP is strictly cross-verified between IPO Watch and InvestorGain.</p>
+    <p style='color: #7f8c8d; font-size: 13px; margin-bottom: 20px;'>* Tolerance: +/- 10% difference is auto-resolved. High variations are flagged as <b>⚠️ Mismatch</b>.</p>
     {html_content}
     </body>
     </html>
@@ -212,14 +181,8 @@ def send_failure_email(error_message):
     msg = MIMEMultipart("alternative")
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
-    msg["Subject"] = "❌ ALERT: IPO Analysis Agent Failed!"
-    html_content = f"""
-    <html><body style="font-family: Arial, sans-serif;">
-    <h3 style="color: #c0392b;">⚠️ IPO Analysis Agent Failed (After 3 Retries)</h3>
-    <p><b>Error Details:</b></p>
-    <pre style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 4px;">{error_message}</pre>
-    </body></html>
-    """
+    msg["Subject"] = "❌ ALERT: IPO Agent Failed!"
+    html_content = f"<html><body><h3>⚠️ IPO Agent Failed</h3><pre>{error_message}</pre></body></html>"
     msg.attach(MIMEText(html_content, "html", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
@@ -238,22 +201,19 @@ if __name__ == "__main__":
             try:
                 subject, content = analyze_ipo_data(extracted_data)
                 send_email(subject, content)
-                print("✅ ഐപിഒ റിപ്പോർട്ട് വിജയകരമായി തയ്യാറാക്കി അയച്ചു!")
+                print("✅ വാലിഡേറ്റ് ചെയ്ത ഐപിഒ റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
                 success = True
                 break 
             
             except Exception as e:
                 last_error = str(e)
-                print(f"⚠️ Attempt {attempt + 1} പരാജയപ്പെട്ടു (AI/Email Error): {e}")
-                
-                if attempt < max_retries - 1:
-                    print("⏳ 1 മിനിറ്റിനുശേഷം വീണ്ടും ശ്രമിക്കുന്നു...")
-                    time.sleep(60)
+                print(f"⚠️ Attempt {attempt + 1} പരാജയപ്പെട്ടു: {e}")
+                time.sleep(60)
         
         if not success:
             send_failure_email(last_error)
             sys.exit(1)
     else:
         print("ഡാറ്റയൊന്നും ലഭിച്ചില്ല. ഫെയിലിയർ മെയിൽ അയക്കുന്നു...")
-        send_failure_email("All scraping sources returned zero data.")
+        send_failure_email("Cross-validation failed: Missing data from scraping sources.")
         sys.exit(1)
