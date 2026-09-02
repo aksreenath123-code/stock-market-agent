@@ -170,4 +170,85 @@ def analyze_earnings_momentum(raw_data):
     കോഡ് ബ്ലോക്കിൽ മാത്രം മറുപടി നൽകുക. ഇൻലൈൻ CSS വേണ്ട.
     """
     response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return response.text.replace("```html", "").replace("
+    return response.text.replace("```html", "").replace("```", "").strip()
+
+# ==================== 5. EMAIL COMPOSITION (HIGH CONTRAST) ====================
+def send_combined_email(ipo_html, earnings_html):
+    print("📧 സംയോജിപ്പിച്ച മാസ്റ്റർ റിപ്പോർട്ട് മെയിൽ അയക്കുന്നു...")
+    msg = MIMEMultipart("alternative")
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECEIVER_EMAIL
+    msg["Subject"] = "🚀 Daily Elite Swing Agent: Post-IPO & Earnings"
+    
+    wrapped_html = f"""
+    <html>
+    <head>
+    <style>
+      body {{ background-color: #ffffff; color: #000000; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 10px; }}
+      table {{ border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 10px; margin-bottom: 30px; background-color: #ffffff; }}
+      th, td {{ border: 1px solid #cccccc; text-align: left; padding: 12px; vertical-align: top; line-height: 1.5; color: #000000; }}
+      th {{ background-color: #111827; color: #ffffff; font-weight: bold; text-transform: uppercase; font-size: 13px; }}
+      tr:nth-child(even) {{ background-color: #f9fafb; }}
+      tr:nth-child(odd) {{ background-color: #ffffff; }}
+      h2 {{ color: #111827; margin-bottom: 5px; border-bottom: 2px solid #2563eb; padding-bottom: 5px; display: inline-block; font-size: 20px; }}
+      p {{ color: #374151; font-size: 13px; margin-bottom: 10px; }}
+    </style>
+    </head>
+    <body>
+        <h1 style="text-align: center; color: #111827;">📈 Daily Elite Swing Trading Report</h1>
+        
+        <h2>🚀 Section 1: Post-IPO Base Breakouts (Top 5)</h2>
+        <p>* Multi-timeframe analysis on recently listed IPOs showing strong base breakouts.</p>
+        {ipo_html}
+        
+        <h2>💰 Section 2: Earnings Momentum (Top 5)</h2>
+        <p>* High conviction PEAD (Post-Earnings Announcement Drift) swing setups.</p>
+        {earnings_html}
+    </body>
+    </html>
+    """
+    msg.attach(MIMEText(wrapped_html, "html", "utf-8"))
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+        server.send_message(msg)
+
+def send_failure_email(error_message):
+    print("🚨 ഫെയിലിയർ അലേർട്ട് മെയിൽ അയക്കുന്നു...")
+    msg = MIMEMultipart("alternative")
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = RECEIVER_EMAIL
+    msg["Subject"] = "❌ ALERT: Master Agent Failed!"
+    html_content = f"<html><body><h3 style='color: #000000;'>⚠️ Swing Agent Failed</h3><pre style='color: #000000;'>{error_message}</pre></body></html>"
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
+        server.send_message(msg)
+
+# ==================== 6. MAIN EXECUTION ====================
+if __name__ == "__main__":
+    ipo_data = fetch_post_ipo_performance()
+    earnings_data = fetch_moneycontrol_earnings()
+    
+    if ipo_data.strip() or earnings_data.strip():
+        try:
+            if ipo_data:
+                ipo_result = analyze_post_ipo_trend(ipo_data)
+            else:
+                ipo_result = "<p style='color: #b91c1c; font-weight: bold;'>⚠️ Post-IPO data could not be fetched today (Bot protection active).</p>"
+                
+            if earnings_data:
+                earnings_result = analyze_earnings_momentum(earnings_data)
+            else:
+                earnings_result = "<p style='color: #b91c1c; font-weight: bold;'>⚠️ Earnings data unavailable (URLs changed or Cookie expired).</p>"
+            
+            send_combined_email(ipo_result, earnings_result)
+            print("✅ മാസ്റ്റർ റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
+            sys.exit(0)
+        except Exception as e:
+            print(f"❌ അനാലിസിസ് അല്ലെങ്കിൽ ഇമെയിൽ പരാജയപ്പെട്ടു: {e}")
+            send_failure_email(str(e))
+            sys.exit(1)
+    else:
+        print("❌ ഡാറ്റയൊന്നും ലഭിച്ചില്ല. സ്ക്രാപ്പിംഗ് പൂർണ്ണമായും പരാജയപ്പെട്ടു.")
+        send_failure_email("Both scraping sources (InvestorGain & Moneycontrol) failed to return data.")
+        sys.exit(1)
