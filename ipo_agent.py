@@ -35,7 +35,15 @@ RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ==================== 3. ADVANCED ANTI-BOT FETCHING & BATCHING ====================
+# ==================== 3. BULLETPROOF MULTI-SOURCE FETCHING ====================
+# ബോട്ട് ഡിറ്റക്ഷൻ ഒഴിവാക്കാൻ വ്യത്യസ്ത ബ്രൗസറുകളുടെ ലിസ്റ്റ്
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+]
+
 def clean_url(url_str):
     cleaned = re.sub(r'^\[.*?\]\((.*?)\)$', r'\1', str(url_str).strip())
     cleaned = cleaned.replace('[', '').replace(']', '').replace('(', '').replace(')', '')
@@ -43,20 +51,20 @@ def clean_url(url_str):
     return cleaned
 
 def fetch_with_retry(url, retries=5):
-    """5 തവണ റീട്രൈ ചെയ്യുകയും ബോട്ട് ബ്ലോക്കിംഗ് ഒഴിവാക്കാൻ റാൻഡം ഗ്യാപ്പ് നൽകുകയും ചെയ്യുന്നു"""
     clean_u = clean_url(url)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1"
-    }
     
     for attempt in range(retries):
+        # ഓരോ റിക്വസ്റ്റിലും പുതിയ User-Agent ഉപയോഗിക്കുന്നു
+        headers = {
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1"
+        }
+        
         try:
-            # മനുഷ്യനെപ്പോലെ തോന്നിക്കാൻ റിക്വസ്റ്റിന് മുൻപ് ഒരു ചെറിയ ഗ്യാപ്പ്
-            time.sleep(random.uniform(2, 5)) 
+            time.sleep(random.uniform(3, 6)) 
             res = requests.get(clean_u, headers=headers, timeout=25)
             
             if res.status_code == 200:
@@ -67,7 +75,7 @@ def fetch_with_retry(url, retries=5):
             print(f"⚠️ Attempt {attempt+1} failed for {clean_u}: {e}")
             
         if attempt < retries - 1:
-            wait_time = random.uniform(10, 20) # 10 മുതൽ 20 സെക്കൻഡ് വരെ റാൻഡം വെയിറ്റിംഗ്
+            wait_time = random.uniform(8, 15)
             print(f"⏳ {wait_time:.1f} സെക്കൻഡ് കാത്തിരിക്കുന്നു (Anti-bot delay)...")
             time.sleep(wait_time)
             
@@ -100,32 +108,49 @@ def parse_html_table(html_content, source_name, max_tables=2):
     return data
 
 def fetch_ipo_watch_data():
-    print("🔍 IPO Watch (ipowatch.in) സൈറ്റിൽ നിന്നും ഡാറ്റ ശേഖരിക്കുന്നു...")
-    url = "https://ipowatch.in/ipo-gmp-today-live-ipo-grey-market-premium/"
+    print("🔍 IPO Watch സൈറ്റിൽ നിന്നും ഡാറ്റ ശേഖരിക്കുന്നു...")
+    # പുതിയ ശരിയായ URL അപ്ഡേറ്റ് ചെയ്തു
+    url = "https://ipowatch.in/ipo-grey-market-premium-latest-ipo-gmp/"
     html_content = fetch_with_retry(url)
     if not html_content: return ""
     return parse_html_table(html_content, "IPO Watch", max_tables=2) or ""
 
 def fetch_investorgain_data():
-    print("🔍 InvestorGain (investorgain.com) സൈറ്റിൽ നിന്നും ഡാറ്റ ശേഖരിക്കുന്നു...")
+    print("🔍 InvestorGain സൈറ്റിൽ നിന്നും ഡാറ്റ ശേഖരിക്കുന്നു...")
     url = "https://www.investorgain.com/report/ipo-gmp-live/331/"
     html_content = fetch_with_retry(url)
     if not html_content: return ""
     return parse_html_table(html_content, "InvestorGain", max_tables=1) or ""
 
+def fetch_chittorgarh_data():
+    print("🔍 Chittorgarh സൈറ്റിൽ നിന്നും ഡാറ്റ ശേഖരിക്കുന്നു...")
+    url = "https://www.chittorgarh.com/"
+    html_content = fetch_with_retry(url)
+    if not html_content: return ""
+    return parse_html_table(html_content, "Chittorgarh", max_tables=2) or ""
+
 def get_comprehensive_ipo_data():
-    print("⚙️ ക്രോസ്-വാലിഡേഷനായി ഡാറ്റ എടുക്കുന്നു (With Anti-bot delays)...")
-    watch_data = fetch_ipo_watch_data()
+    print("⚙️ ക്രോസ്-വാലിഡേഷനായി ഡാറ്റ എടുക്കുന്നു (3 Sources)...")
     
-    # രണ്ട് സൈറ്റുകൾക്കിടയിൽ സസ്പീഷ്യസ് ആവാതിരിക്കാൻ ഗ്യാപ്പ്
-    time.sleep(random.uniform(5, 10)) 
-    gain_data = fetch_investorgain_data()
+    data_sources = []
     
-    combined_data = watch_data + gain_data
+    w_data = fetch_ipo_watch_data()
+    if len(w_data) > 100: data_sources.append(w_data)
+        
+    time.sleep(random.uniform(4, 7))
     
-    if len(combined_data.strip()) > 150:
-        print("✅ ഡാറ്റ വിജയകരമായി ലഭിച്ചു.")
-        return combined_data
+    i_data = fetch_investorgain_data()
+    if len(i_data) > 100: data_sources.append(i_data)
+        
+    time.sleep(random.uniform(4, 7))
+    
+    c_data = fetch_chittorgarh_data()
+    if len(c_data) > 100: data_sources.append(c_data)
+
+    if len(data_sources) >= 1:
+        print(f"✅ {len(data_sources)} സൈറ്റുകളിൽ നിന്നും ഡാറ്റ വിജയകരമായി ലഭിച്ചു.")
+        return "\n".join(data_sources)
+        
     return ""
 
 # ==================== 4. AI CROSS-VALIDATION ENGINE ====================
@@ -142,9 +167,9 @@ def analyze_ipo_data(raw_data):
     🚨 നിങ്ങളുടെ ടാസ്ക്:
     1. **Batch Limits:** ഡാറ്റയിൽ ഒരുപാട് പഴയ ഐപിഒകൾ ഉണ്ടെങ്കിൽ അവ ഒഴിവാക്കുക. നിലവിൽ ഓപ്പൺ ആയിട്ടുള്ളതും, വരാനിരിക്കുന്നതും, അടുത്തിടെ ക്ലോസ് ആയതുമായ ഏറ്റവും പുതിയ 15-20 ഐപിഒകൾ മാത്രം വിശകലനം ചെയ്യുക.
     2. **Source Tracking & Validation (Tolerance 10%):** 
-       - രണ്ട് സോഴ്സുകളിൽ (IPO Watch & InvestorGain) ഡാറ്റ ലഭ്യമാണെങ്കിൽ അവയിലെ GMP താരതമ്യം ചെയ്യുക. 
-         - വ്യത്യാസം +/- 10% ആണെങ്കിൽ: '✅ Validated (IPO Watch & InvestorGain)' എന്ന് രേഖപ്പെടുത്തുക.
-         - വ്യത്യാസം വലുതാണെങ്കിൽ: '⚠️ Mismatch (Watch: ₹X | Gain: ₹Y)' എന്ന് രേഖപ്പെടുത്തുക.
+       - ലഭ്യമായ സോഴ്സുകളിലെ GMP താരതമ്യം ചെയ്യുക. 
+         - ഒന്നിലധികം സോഴ്സുകൾ തമ്മിൽ യോജിക്കുന്നുണ്ടെങ്കിൽ: '✅ Validated (Source 1 & Source 2)' എന്ന് രേഖപ്പെടുത്തുക.
+         - വ്യത്യാസം വലുതാണെങ്കിൽ: '⚠️ Mismatch (S1: ₹X | S2: ₹Y)' എന്ന് രേഖപ്പെടുത്തുക.
        - ഒരു സോഴ്സിൽ മാത്രം (Single Source) ഡാറ്റ ലഭ്യമാണെങ്കിൽ: 'ℹ️ Single Source (ഉദാ: IPO Watch)' എന്ന് കൃത്യമായി വെബ്സൈറ്റിന്റെ പേര് സഹിതം രേഖപ്പെടുത്തുക.
     3. ലിസ്റ്റിംഗ് ഗെയിൻ 15%-ന് മുകളിൽ ആണെങ്കിൽ "🟢 APPLY" എന്നും, അല്ലെങ്കിൽ "🔴 AVOID" എന്നും നിർദ്ദേശിക്കുക.
 
@@ -184,7 +209,7 @@ def send_email(subject, html_content):
     </head>
     <body>
     <h2 style='color: #2c3e50; margin-bottom: 5px; border-bottom: 2px solid #f1c40f; padding-bottom: 5px; display: inline-block;'>🎯 IPO Analysis Report</h2>
-    <p style='color: #7f8c8d; font-size: 13px; margin-bottom: 10px;'>* GMP is dynamically validated across multiple sources with Source Tracking.</p>
+    <p style='color: #7f8c8d; font-size: 13px; margin-bottom: 10px;'>* GMP is dynamically validated across up to 3 sources.</p>
     {html_content}
     </body>
     </html>
@@ -234,5 +259,5 @@ if __name__ == "__main__":
             sys.exit(1)
     else:
         print("ഡാറ്റയൊന്നും ലഭിച്ചില്ല. ഫെയിലിയർ മെയിൽ അയക്കുന്നു...")
-        send_failure_email("Scraping failed: Websites might be blocking the request. Anti-bot protection active.")
+        send_failure_email("Scraping failed: All 3 websites blocked the request or returned no data.")
         sys.exit(1)
