@@ -36,7 +36,6 @@ RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==================== 3. BULLETPROOF MULTI-SOURCE FETCHING ====================
-# ബോട്ട് ഡിറ്റക്ഷൻ ഒഴിവാക്കാൻ വ്യത്യസ്ത ബ്രൗസറുകളുടെ ലിസ്റ്റ്
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",
@@ -54,7 +53,6 @@ def fetch_with_retry(url, retries=5):
     clean_u = clean_url(url)
     
     for attempt in range(retries):
-        # ഓരോ റിക്വസ്റ്റിലും പുതിയ User-Agent ഉപയോഗിക്കുന്നു
         headers = {
             "User-Agent": random.choice(USER_AGENTS),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -109,7 +107,6 @@ def parse_html_table(html_content, source_name, max_tables=2):
 
 def fetch_ipo_watch_data():
     print("🔍 IPO Watch സൈറ്റിൽ നിന്നും ഡാറ്റ ശേഖരിക്കുന്നു...")
-    # പുതിയ ശരിയായ URL അപ്ഡേറ്റ് ചെയ്തു
     url = "https://ipowatch.in/ipo-grey-market-premium-latest-ipo-gmp/"
     html_content = fetch_with_retry(url)
     if not html_content: return ""
@@ -194,22 +191,26 @@ def send_email(subject, html_content):
     msg["To"] = RECEIVER_EMAIL
     msg["Subject"] = subject
     
+    # 🎨 COLOR CONTRAST UPDATED HERE (Pure white background, solid dark fonts)
     wrapped_html = f"""
     <html>
     <head>
     <style>
-      table {{ border-collapse: collapse; width: 100%; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 14px; margin-top: 15px; }}
-      th, td {{ border: 1px solid #dddddd; text-align: left; padding: 12px; vertical-align: top; line-height: 1.5; }}
-      th {{ background-color: #2c3e50; color: #f1c40f; font-weight: bold; text-transform: uppercase; font-size: 13px; }}
-      tr:nth-child(even) {{ background-color: #f8f9fa; color: #333; }}
-      tr:nth-child(odd) {{ background-color: #ffffff; color: #333; }}
-      .mismatch {{ color: #c0392b; font-weight: bold; background-color: #fde8e8; padding: 4px; border-radius: 4px; }}
-      .validated {{ color: #27ae60; font-weight: bold; }}
+      body {{ background-color: #ffffff; color: #000000; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }}
+      table {{ border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 15px; background-color: #ffffff; }}
+      th, td {{ border: 1px solid #cccccc; text-align: left; padding: 12px; vertical-align: top; line-height: 1.5; color: #000000; }}
+      th {{ background-color: #111827; color: #ffffff; font-weight: bold; text-transform: uppercase; font-size: 13px; }}
+      tr:nth-child(even) {{ background-color: #f9fafb; }}
+      tr:nth-child(odd) {{ background-color: #ffffff; }}
+      .mismatch {{ color: #b91c1c; font-weight: bold; background-color: #fee2e2; padding: 4px; border-radius: 4px; }}
+      .validated {{ color: #15803d; font-weight: bold; }}
+      h2 {{ color: #111827; margin-bottom: 5px; border-bottom: 2px solid #2563eb; padding-bottom: 5px; display: inline-block; }}
+      p {{ color: #374151; font-size: 13px; margin-bottom: 10px; }}
     </style>
     </head>
     <body>
-    <h2 style='color: #2c3e50; margin-bottom: 5px; border-bottom: 2px solid #f1c40f; padding-bottom: 5px; display: inline-block;'>🎯 IPO Analysis Report</h2>
-    <p style='color: #7f8c8d; font-size: 13px; margin-bottom: 10px;'>* GMP is dynamically validated across up to 3 sources.</p>
+    <h2>🎯 IPO Analysis Report</h2>
+    <p>* GMP is dynamically validated across up to 3 sources.</p>
     {html_content}
     </body>
     </html>
@@ -226,7 +227,7 @@ def send_failure_email(error_message):
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
     msg["Subject"] = "❌ ALERT: IPO Agent Failed!"
-    html_content = f"<html><body><h3>⚠️ IPO Agent Failed</h3><pre>{error_message}</pre></body></html>"
+    html_content = f"<html><body><h3 style='color: #000000;'>⚠️ IPO Agent Failed</h3><pre style='color: #000000;'>{error_message}</pre></body></html>"
     msg.attach(MIMEText(html_content, "html", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
