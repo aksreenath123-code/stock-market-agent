@@ -32,9 +32,9 @@ GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
 # പുതിയ മണികൺട്രോൾ കുക്കി
-raw_mc_cookie = os.getenv("MONEYCONTROL_COOKIE")
-MONEYCONTROL_COOKIE = str(raw_mc_cookie).strip().replace('\n', '').replace('\r', '') if raw_mc_cookie else None
-
+#raw_mc_cookie = os.getenv("MONEYCONTROL_COOKIE")
+#MONEYCONTROL_COOKIE = str(raw_mc_cookie).strip().replace('\n', '').replace('\r', '') if raw_mc_cookie else None
+MONEYCONTROL_COOKIE = os.getenv("MONEYCONTROL_COOKIE", "")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==================== 3. SCRAPING MODULES ====================
