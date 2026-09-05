@@ -41,30 +41,26 @@ if not GEMINI_API_KEY:
 client = genai.Client(api_key=GEMINI_API_KEY)
 PREVIOUS_DATA_FILE = "previous_stocks.json"
 
-# ================= 1. ROBUST NSE FETCH (WITH INFINITE RETRY) =================
+# ================= 1. ROBUST NSE FETCH =================
 def get_all_nse_tickers():
     print("🌐 NSE-യിൽ നിന്നും സ്റ്റോക്ക് ലിസ്റ്റ് എടുക്കുന്നു...")
     url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
-    
     scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
     
     attempt = 1
     while True:
         try:
-            time.sleep(random.uniform(2, 5)) # ഹ്യൂമൻ ബിഹേവിയർ ടൈം ഔട്ട്
+            time.sleep(random.uniform(2, 5))
             response = scraper.get(url, timeout=30)
             if response.status_code == 200:
                 df = pd.read_csv(io.StringIO(response.text))
                 tickers = [f"{symbol}.NS" for symbol in df['SYMBOL'].tolist()]
                 print(f"✅ മൊത്തം {len(tickers)} സ്റ്റോക്കുകൾ വിജയകരമായി ശേഖരിച്ചു.")
                 return tickers
-            else:
-                print(f"⚠️ HTTP Error {response.status_code}. വീണ്ടും ശ്രമിക്കുന്നു...")
         except Exception as e:
             print(f"⚠️ കണക്ഷൻ പ്രശ്നം (Attempt {attempt}): {e}. വീണ്ടും ശ്രമിക്കുന്നു...")
             
-        sleep_time = min(attempt * 10, 60) # പരമാവധി 60 സെക്കൻഡ് വരെ കാത്തിരിക്കും
-        time.sleep(sleep_time)
+        time.sleep(min(attempt * 10, 60))
         attempt += 1
 
 # ================= 2. DELTA TRACKING =================
@@ -81,20 +77,19 @@ def save_current_stocks(stocks_list):
     with open(PREVIOUS_DATA_FILE, "w") as f:
         json.dump(stocks_list, f)
 
-# ================= 3. ROBUST PRE-FILTERING (BATCHED & HUMAN-LIKE) =================
-def get_pre_filtered_stocks(tickers, batch_size=15):
-    shortlisted_stocks = {}
+# ================= 3. PRE-FILTERING & SMART SELECTION =================
+def get_filtered_stocks(tickers, batch_size=15):
+    all_shortlisted = []
     end_date = datetime.now()
     start_date = end_date - timedelta(days=90)
     
-    print(f"📊 {len(tickers)} സ്റ്റോക്കുകൾ പ്രീ-ഫിൽറ്റർ ചെയ്യുന്നു (സുരക്ഷിതമായ വേഗതയിൽ)...")
+    print(f"📊 {len(tickers)} സ്റ്റോക്കുകൾ പ്രീ-ഫിൽറ്റർ ചെയ്യുന്നു...")
     
     for i in range(0, len(tickers), batch_size):
         batch = tickers[i:i+batch_size]
         print(f"🔄 ബാച്ച് {i//batch_size + 1}/{(len(tickers)//batch_size)+1} പ്രോസസ്സ് ചെയ്യുന്നു...")
         
         data = pd.DataFrame()
-        # യാഹൂ ഫിനാൻസ് ഡാറ്റ കിട്ടുന്നതുവരെ ലൂപ്പ് ചെയ്യും
         while True:
             try:
                 data = yf.download(batch, start=start_date, end=end_date, progress=False, group_by='ticker')
@@ -113,7 +108,7 @@ def get_pre_filtered_stocks(tickers, batch_size=15):
                     latest_close = float(df['Close'].iloc[-1])
                     avg_volume = df['Volume'].rolling(20).mean().iloc[-1]
                     
-                    if latest_close > 30 and avg_volume > 50000: # പെന്നി സ്റ്റോക്കുകൾ ഒഴിവാക്കാൻ
+                    if latest_close > 30 and avg_volume > 50000: 
                         price_30_days_ago = float(df['Close'].iloc[-21]) 
                         gain_percent = ((latest_close - price_30_days_ago) / price_30_days_ago) * 100
                         
@@ -124,31 +119,51 @@ def get_pre_filtered_stocks(tickers, batch_size=15):
                             df.ta.atr(length=14, append=True)
                             latest = df.iloc[-1]
                             
-                            shortlisted_stocks[ticker] = {
+                            all_shortlisted.append({
                                 "stock": ticker, "price": latest_close, "gain": gain_percent,
                                 "rsi": float(latest['RSI_14']), "ema20": float(latest['EMA_20']),
                                 "ema50": float(latest['EMA_50']), "atr": float(latest['ATRr_14']),
                                 "rvol": float(latest['Volume'] / avg_volume)
-                            }
+                            })
             except Exception:
                 pass
                 
-        # ബോട്ട് പോലെയല്ല തോന്നിക്കാൻ ഓരോ ബാച്ചിനും ഇടയിൽ റാൻഡം ടൈം ഔട്ട് (10 മുതൽ 20 സെക്കൻഡ് വരെ)
         time.sleep(random.uniform(10, 20)) 
         
-    return shortlisted_stocks
+    all_shortlisted = sorted(all_shortlisted, key=lambda x: x['gain'], reverse=True)
+    
+    # മാനുവൽ റൺ ഇൻപുട്ട് പരിശോധിക്കുന്നു (GitHub Actions Input)
+    manual_mode = os.getenv("RUN_MODE", "auto")
+    
+    if manual_mode == "full":
+        is_monday = True
+        print("🛠️ Manual Override: മുഴുവൻ സ്റ്റോക്കുകളും (Full Market) അനലൈസ് ചെയ്യുന്നു.")
+    elif manual_mode == "top_80":
+        is_monday = False
+        print("🛠️ Manual Override: ടോപ്പ് 80 സ്റ്റോക്കുകൾ മാത്രം അനലൈസ് ചെയ്യുന്നു.")
+    else:
+        # ഷെഡ്യൂൾഡ് റൺ ആണെങ്കിൽ തിങ്കളാഴ്ചയാണോ എന്ന് നോക്കും (0 = Monday)
+        is_monday = datetime.now().weekday() == 0
+        print(f"📅 Scheduled Run: (Monday Full Batch: {is_monday})")
+    
+    if is_monday:
+        selected_stocks = all_shortlisted
+        print(f"📈 ഫുൾ മോഡ്: 15%-ൽ കൂടുതൽ നേട്ടമുള്ള മുഴുവൻ സ്റ്റോക്കുകളും ({len(selected_stocks)} എണ്ണം) എടുത്തു.")
+    else:
+        selected_stocks = all_shortlisted[:80]
+        print(f"📉 ടോപ്പ് 80 മോഡ്: ഏറ്റവും ഉയർന്ന വളർച്ചയുള്ള {len(selected_stocks)} സ്റ്റോക്കുകൾ തിരഞ്ഞെടുത്തു.")
+        
+    return {item['stock']: item for item in selected_stocks}, is_monday
 
-# ================= 4. AI ANALYSIS WITH GUARDRAILS & FALLBACK =================
+# ================= 4. AI ANALYSIS WITH GUARDRAILS =================
 def run_ai_analysis(ticker, data):
     prompt = f"Stk:{ticker},P:{data['price']:.1f},G:{data['gain']:.1f}%,RSI:{data['rsi']:.1f},E20:{data['ema20']:.1f},E50:{data['ema50']:.1f},RV:{data['rvol']:.1f},ATR:{data['atr']:.1f}. Reply ONLY valid JSON: {{\"T\":\"trend<5 words\",\"E\":\"entry\",\"S\":\"SL\",\"Tar\":\"target\",\"C\":\"High/Med/Low\",\"P\":\"prob%\"}}"
     
     attempt = 1
-    while True: # ഡാറ്റ കിട്ടുന്നതുവരെ അല്ലെങ്കിൽ സക്സസ് ആവുന്നതുവരെ റീട്രൈ ചെയ്തുകൊണ്ടിരിക്കും
+    while True:
         try:
-            response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+            response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
             raw_text = response.text.strip().replace('```json', '').replace('```', '')
-            
-            # JSON കൃത്യമാണോ എന്ന് പരിശോധിക്കുന്നു (Hallucination Guardrail)
             res_json = json.loads(raw_text)
             
             return {
@@ -161,13 +176,10 @@ def run_ai_analysis(ticker, data):
             }
         except Exception as e:
             print(f"⚠️ AI Error for {ticker} (Attempt {attempt}): {e}. വീണ്ടും ശ്രമിക്കുന്നു...")
-            # എപിഐ ലിമിറ്റ് അല്ലെങ്കിൽ ഹാലുസിനേഷൻ വന്നാൽ കൂടുതൽ സമയം കാത്തിരിക്കും
             time.sleep(20 * attempt)
             attempt += 1
-            
-            # 5 തവണയ്ക്ക് മേൽ പരാജയപ്പെട്ടാൽ കോഡ് ക്രാഷ് ആവാതിരിക്കാൻ സേഫ് ആയ ഡിഫോൾട്ട് (Fallback) ഡാറ്റ നൽകും
-            if attempt > 5:
-                print(f"🚨 {ticker}-ന് AI അനാലിസിസ് ലഭിച്ചില്ല. ഫോൾബാക്ക് ഡാറ്റ ഉപയോഗിക്കുന്നു.")
+            if attempt > 4:
+                print(f"🚨 {ticker}-ന് ഫോൾബാക്ക് ഡാറ്റ ഉപയോഗിക്കുന്നു.")
                 return {
                     "trend": "Momentum Breakout",
                     "entry": f"₹{data['price']:.1f}",
@@ -178,11 +190,13 @@ def run_ai_analysis(ticker, data):
                 }
 
 # ================= 5. EMAIL SYSTEM =================
-def send_email(active_reports, dropped_stocks):
+def send_email(active_reports, dropped_stocks, is_monday):
     msg = MIMEMultipart("alternative")
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
-    msg["Subject"] = "🚀 NSE Ultimate Swing Alert (Guarded & Verified)"
+    
+    report_type = "Weekly Full-Market" if is_monday else "Top 80 Daily"
+    msg["Subject"] = f"🚀 NSE {report_type} Swing Alert (Sorted by Growth)"
     
     rows = ""
     for item in active_reports:
@@ -191,14 +205,14 @@ def send_email(active_reports, dropped_stocks):
         
         rows += f"<tr><td><b>{item['stock']}</b><br><span style='color: blue;'>{item['price']}</span></td><td><b>{status_icon}</b></td><td><span style='color: green; font-weight: bold;'>{item['gain']}</span><br><span style='font-size: 12px; color: gray;'>{item['technicals']}</span></td><td style='font-size: 13px;'>{item['trend']}</td><td style='font-size: 13px; font-weight: bold;'>{item['entry_sl_target']}</td><td style='text-align: center;'><span style='color: {conviction_color}; font-weight: bold;'>{item['conviction']}</span><br>{item['probability']}</td></tr>"
 
-    main_table = f"<table><tr><th>Stock & Price</th><th>Status</th><th>Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{rows}</table>" if active_reports else "<p>No active 15%+ stocks found today.</p>"
+    main_table = f"<table><tr><th>Stock & Price</th><th>Status</th><th>Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{rows}</table>" if active_reports else "<p>No active stocks found.</p>"
 
     dropped_rows = ""
     for stock in dropped_stocks:
-        dropped_rows += f"<tr><td style='color: red;'><b>{stock}</b></td><td>🔴 Dropped (Gain < 15%)</td></tr>"
+        dropped_rows += f"<tr><td style='color: red;'><b>{stock}</b></td><td>🔴 Dropped from List</td></tr>"
     dropped_table = f"<h3 style='margin-top: 30px; border-bottom: 2px solid red;'>🔻 Dropped Stocks</h3><table><tr><th>Stock</th><th>Reason</th></tr>{dropped_rows}</table>" if dropped_stocks else ""
 
-    html_content = f"<html><head><style>body {{ font-family: Arial, sans-serif; padding: 10px; color: #333; }} table {{ border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 15px; }} th, td {{ border: 1px solid #e0e0e0; padding: 10px; text-align: left; vertical-align: top; }} th {{ background-color: #111827; color: white; }}</style></head><body><h2>📈 Ultimate Guarded NSE Swing Screener</h2>{main_table} {dropped_table}</body></html>"
+    html_content = f"<html><head><style>body {{ font-family: Arial, sans-serif; padding: 10px; color: #333; }} table {{ border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 15px; }} th, td {{ border: 1px solid #e0e0e0; padding: 10px; text-align: left; vertical-align: top; }} th {{ background-color: #111827; color: white; }}</style></head><body><h2>📈 NSE {report_type} Swing Screener</h2>{main_table} {dropped_table}</body></html>"
     
     msg.attach(MIMEText(html_content, "html", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
@@ -206,13 +220,12 @@ def send_email(active_reports, dropped_stocks):
         server.send_message(msg)
 
 if __name__ == "__main__":
-    print("🚀 അൾട്ടിമേറ്റ് ട്രേഡിങ് ഏജന്റ് പ്രവർത്തിച്ചുതുടങ്ങി...")
+    print(f"🚀 സ്മാർട്ട് സ്വിങ് ഏജന്റ് പ്രവർത്തിച്ചുതുടങ്ങി...")
     
     all_tickers = get_all_nse_tickers()
     previous_stocks = load_previous_stocks()
     
-    # സുരക്ഷിതമായ ബാച്ചിങ് സൈസും ടൈം ഔട്ടും ഉപയോഗിക്കുന്നു
-    current_filtered_dict = get_pre_filtered_stocks(all_tickers, batch_size=15)
+    current_filtered_dict, is_monday = get_filtered_stocks(all_tickers, batch_size=15)
     current_stocks_list = list(current_filtered_dict.keys())
     
     new_stocks = set(current_stocks_list) - set(previous_stocks)
@@ -238,9 +251,8 @@ if __name__ == "__main__":
             "conviction": ai_report.get("conviction", "N/A"), "probability": ai_report.get("probability_rate", "N/A")
         })
         
-        # ഓരോ എഐ അനാലിസിസിനും ഇടയിൽ സുരക്ഷിതമായ റാൻഡം ഗ്യാപ്പ് (20 മുതൽ 35 സെക്കൻഡ് വരെ)
-        time.sleep(random.uniform(20, 35)) 
+        time.sleep(random.uniform(15, 25)) 
         
-    send_email(final_reports, list(dropped_stocks))
+    send_email(final_reports, list(dropped_stocks), is_monday)
     save_current_stocks(current_stocks_list)
-    print("🎉 എല്ലാ പ്രക്രിയകളും വിജയകരമായി പൂർത്തിയായി!")
+    print("🎉 അനാലിസിസും മെയിലും വിജയകരമായി പൂർത്തിയായി!")
