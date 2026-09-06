@@ -1,0 +1,30 @@
+name: Weekly News & Catalyst Market Agent
+
+on:
+  schedule:
+    # ശനിയാഴ്ചതോറും 6:00 PM IST (UTC 12:30 PM) റൺ ചെയ്യാൻ ക്രമീകരിച്ചിരിക്കുന്നു
+    - cron: '30 12 * * 6'
+    
+  workflow_dispatch:
+
+jobs:
+  run-weekly-news-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: സെറ്റപ്പ് പൈത്തൺ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: വീക്ക്‌ലി ന്യൂസ് ഏജന്റ് റൺ ചെയ്യുന്നു (Saturday 6:00 PM IST)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+          MONEYCONTROL_COOKIE: ${{ secrets.MONEYCONTROL_COOKIE }}
+        run: python weekly_news_agent.py
