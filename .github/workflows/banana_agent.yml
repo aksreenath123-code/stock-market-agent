@@ -27,7 +27,7 @@ jobs:
       - name: Run Banana Patterns Script
         env:
           # പഴയ IPO_GEMINI_API_KEY തന്നെ ഇവിടെ നൽകിയിരിക്കുന്നു
-          IPO_GEMINI_API_KEY: ${{ secrets.IPO_GEMINI_API_KEY }}
+          IPO_GEMINI_API_KEY: ${{ secrets.SSH_GEMINI_API_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
