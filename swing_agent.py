@@ -77,13 +77,15 @@ def save_current_stocks(stocks_list):
     with open(PREVIOUS_DATA_FILE, "w") as f:
         json.dump(stocks_list, f)
 
-# ================= 3. PRE-FILTERING & SMART SELECTION =================
+# ================= 3. PRE-FILTERING (MONTHLY & WEEKLY) =================
 def get_filtered_stocks(tickers, batch_size=15):
-    all_shortlisted = []
+    monthly_shortlisted = []
+    weekly_shortlisted = []
+    
     end_date = datetime.now()
     start_date = end_date - timedelta(days=90)
     
-    print(f"📊 {len(tickers)} സ്റ്റോക്കുകൾ പ്രീ-ഫിൽറ്റർ ചെയ്യുന്നു...")
+    print(f"📊 {len(tickers)} സ്റ്റോക്കുകൾ പ്രീ-ഫിൽറ്റർ ചെയ്യുന്നു (Monthly & Weekly)...")
     
     for i in range(0, len(tickers), batch_size):
         batch = tickers[i:i+batch_size]
@@ -110,54 +112,77 @@ def get_filtered_stocks(tickers, batch_size=15):
                     
                     if latest_close > 30 and avg_volume > 50000: 
                         price_30_days_ago = float(df['Close'].iloc[-21]) 
-                        gain_percent = ((latest_close - price_30_days_ago) / price_30_days_ago) * 100
+                        price_7_days_ago = float(df['Close'].iloc[-6])   
                         
-                        if gain_percent >= 15:
-                            df.ta.ema(length=20, append=True)
-                            df.ta.ema(length=50, append=True)
-                            df.ta.rsi(length=14, append=True)
-                            df.ta.atr(length=14, append=True)
-                            latest = df.iloc[-1]
+                        monthly_gain = ((latest_close - price_30_days_ago) / price_30_days_ago) * 100
+                        weekly_gain = ((latest_close - price_7_days_ago) / price_7_days_ago) * 100
+                        
+                        df.ta.ema(length=20, append=True)
+                        df.ta.ema(length=50, append=True)
+                        df.ta.rsi(length=14, append=True)
+                        df.ta.atr(length=14, append=True)
+                        latest = df.iloc[-1]
+                        
+                        stock_meta = {
+                            "stock": ticker, "price": latest_close, 
+                            "monthly_gain": monthly_gain, "weekly_gain": weekly_gain,
+                            "rsi": float(latest['RSI_14']), "ema20": float(latest['EMA_20']),
+                            "ema50": float(latest['EMA_50']), "atr": float(latest['ATRr_14']),
+                            "rvol": float(latest['Volume'] / avg_volume)
+                        }
+                        
+                        if monthly_gain >= 15:
+                            monthly_shortlisted.append(stock_meta)
                             
-                            all_shortlisted.append({
-                                "stock": ticker, "price": latest_close, "gain": gain_percent,
-                                "rsi": float(latest['RSI_14']), "ema20": float(latest['EMA_20']),
-                                "ema50": float(latest['EMA_50']), "atr": float(latest['ATRr_14']),
-                                "rvol": float(latest['Volume'] / avg_volume)
-                            })
+                        if weekly_gain >= 15:
+                            weekly_shortlisted.append(stock_meta)
+                            
             except Exception:
                 pass
                 
         time.sleep(random.uniform(10, 20)) 
         
-    all_shortlisted = sorted(all_shortlisted, key=lambda x: x['gain'], reverse=True)
+    monthly_shortlisted = sorted(monthly_shortlisted, key=lambda x: x['monthly_gain'], reverse=True)
+    weekly_shortlisted = sorted(weekly_shortlisted, key=lambda x: x['weekly_gain'], reverse=True)
     
-    # മാനുവൽ റൺ ഇൻപുട്ട് പരിശോധിക്കുന്നു (GitHub Actions Input)
+    current_weekday = datetime.now().weekday() # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri
     manual_mode = os.getenv("RUN_MODE", "auto")
     
     if manual_mode == "full":
-        is_monday = True
-        print("🛠️ Manual Override: മുഴുവൻ സ്റ്റോക്കുകളും (Full Market) അനലൈസ് ചെയ്യുന്നു.")
+        run_monthly = True
+        is_full_monthly = True
+        run_weekly = True
     elif manual_mode == "top_80":
-        is_monday = False
-        print("🛠️ Manual Override: ടോപ്പ് 80 സ്റ്റോക്കുകൾ മാത്രം അനലൈസ് ചെയ്യുന്നു.")
+        run_monthly = True
+        is_full_monthly = False
+        run_weekly = False
     else:
-        # ഷെഡ്യൂൾഡ് റൺ ആണെങ്കിൽ തിങ്കളാഴ്ചയാണോ എന്ന് നോക്കും (0 = Monday)
-        is_monday = datetime.now().weekday() == 0
-        print(f"📅 Scheduled Run: (Monday Full Batch: {is_monday})")
+        # പുതിയ ഡേ-വൈസ് ഷെഡ്യൂൾ ലോജിക്
+        run_monthly = current_weekday in [0, 1, 3]  # Mon, Tue, Thu
+        is_full_monthly = (current_weekday == 0)    # Mon മാത്രം ഫുൾ, ബാക്കി ടോപ്പ് 80
+        run_weekly = current_weekday in [0, 2, 4]   # Mon, Wed, Fri
     
-    if is_monday:
-        selected_stocks = all_shortlisted
-        print(f"📈 ഫുൾ മോഡ്: 15%-ൽ കൂടുതൽ നേട്ടമുള്ള മുഴുവൻ സ്റ്റോക്കുകളും ({len(selected_stocks)} എണ്ണം) എടുത്തു.")
+    # Monthly Selection
+    if run_monthly:
+        if is_full_monthly:
+            selected_monthly = monthly_shortlisted
+        else:
+            selected_monthly = monthly_shortlisted[:80]
     else:
-        selected_stocks = all_shortlisted[:80]
-        print(f"📉 ടോപ്പ് 80 മോഡ്: ഏറ്റവും ഉയർന്ന വളർച്ചയുള്ള {len(selected_stocks)} സ്റ്റോക്കുകൾ തിരഞ്ഞെടുത്തു.")
-        
-    return {item['stock']: item for item in selected_stocks}, is_monday
+        selected_monthly = []
 
-# ================= 4. AI ANALYSIS WITH GUARDRAILS =================
-def run_ai_analysis(ticker, data):
-    prompt = f"Stk:{ticker},P:{data['price']:.1f},G:{data['gain']:.1f}%,RSI:{data['rsi']:.1f},E20:{data['ema20']:.1f},E50:{data['ema50']:.1f},RV:{data['rvol']:.1f},ATR:{data['atr']:.1f}. Reply ONLY valid JSON: {{\"T\":\"trend<5 words\",\"E\":\"entry\",\"S\":\"SL\",\"Tar\":\"target\",\"C\":\"High/Med/Low\",\"P\":\"prob%\"}}"
+    # Weekly Selection
+    if run_weekly:
+        selected_weekly = weekly_shortlisted[:50]
+    else:
+        selected_weekly = []
+        
+    return selected_monthly, selected_weekly, is_full_monthly, run_monthly, run_weekly
+
+# ================= 4. AI ANALYSIS =================
+def run_ai_analysis(ticker, data, timeframe_type):
+    gain_val = data['monthly_gain'] if timeframe_type == 'Monthly' else data['weekly_gain']
+    prompt = f"Stk:{ticker},TF:{timeframe_type},P:{data['price']:.1f},G:{gain_val:.1f}%,RSI:{data['rsi']:.1f},E20:{data['ema20']:.1f},E50:{data['ema50']:.1f},RV:{data['rvol']:.1f},ATR:{data['atr']:.1f}. Reply ONLY valid JSON: {{\"T\":\"trend<5 words\",\"E\":\"entry\",\"S\":\"SL\",\"Tar\":\"target\",\"C\":\"High/Med/Low\",\"P\":\"prob%\"}}"
     
     attempt = 1
     while True:
@@ -175,11 +200,9 @@ def run_ai_analysis(ticker, data):
                 "probability_rate": res_json.get("P", "70%")
             }
         except Exception as e:
-            print(f"⚠️ AI Error for {ticker} (Attempt {attempt}): {e}. വീണ്ടും ശ്രമിക്കുന്നു...")
             time.sleep(20 * attempt)
             attempt += 1
             if attempt > 4:
-                print(f"🚨 {ticker}-ന് ഫോൾബാക്ക് ഡാറ്റ ഉപയോഗിക്കുന്നു.")
                 return {
                     "trend": "Momentum Breakout",
                     "entry": f"₹{data['price']:.1f}",
@@ -190,29 +213,52 @@ def run_ai_analysis(ticker, data):
                 }
 
 # ================= 5. EMAIL SYSTEM =================
-def send_email(active_reports, dropped_stocks, is_monday):
+def send_email(monthly_reports, weekly_reports, dropped_stocks, run_monthly, run_weekly):
     msg = MIMEMultipart("alternative")
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
     
-    report_type = "Weekly Full-Market" if is_monday else "Top 80 Daily"
-    msg["Subject"] = f"🚀 NSE {report_type} Swing Alert (Sorted by Growth)"
+    day_name = datetime.now().strftime('%A')
+    msg["Subject"] = f"🚀 NSE Swing Alert ({day_name} Report)"
     
-    rows = ""
-    for item in active_reports:
-        status_icon = "🆕 New" if item['status'] == "NEW" else "🟢 Retained"
-        conviction_color = "green" if item['conviction'].lower() == "high" else ("orange" if item['conviction'].lower() == "medium" else "red")
-        
-        rows += f"<tr><td><b>{item['stock']}</b><br><span style='color: blue;'>{item['price']}</span></td><td><b>{status_icon}</b></td><td><span style='color: green; font-weight: bold;'>{item['gain']}</span><br><span style='font-size: 12px; color: gray;'>{item['technicals']}</span></td><td style='font-size: 13px;'>{item['trend']}</td><td style='font-size: 13px; font-weight: bold;'>{item['entry_sl_target']}</td><td style='text-align: center;'><span style='color: {conviction_color}; font-weight: bold;'>{item['conviction']}</span><br>{item['probability']}</td></tr>"
+    def build_rows(reports):
+        r_html = ""
+        for item in reports:
+            status_icon = "🆕 New" if item['status'] == "NEW" else "🟢 Retained"
+            conv_color = "green" if item['conviction'].lower() == "high" else ("orange" if item['conviction'].lower() == "medium" else "red")
+            r_html += f"<tr><td><b>{item['stock']}</b><br><span style='color: blue;'>{item['price']}</span></td><td><b>{status_icon}</b></td><td><span style='color: green; font-weight: bold;'>{item['gain']}</span><br><span style='font-size: 12px; color: gray;'>{item['technicals']}</span></td><td style='font-size: 13px;'>{item['trend']}</td><td style='font-size: 13px; font-weight: bold;'>{item['entry_sl_target']}</td><td style='text-align: center;'><span style='color: {conv_color}; font-weight: bold;'>{item['conviction']}</span><br>{item['probability']}</td></tr>"
+        return r_html
 
-    main_table = f"<table><tr><th>Stock & Price</th><th>Status</th><th>Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{rows}</table>" if active_reports else "<p>No active stocks found.</p>"
+    monthly_table = ""
+    if run_monthly:
+        monthly_rows = build_rows(monthly_reports)
+        monthly_table = f"<h3>📈 Monthly 15%+ Gainers</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Monthly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{monthly_rows}</table>" if monthly_reports else "<h3>📈 Monthly 15%+ Gainers</h3><p>No stocks found.</p>"
+
+    weekly_table = ""
+    if run_weekly:
+        weekly_rows = build_rows(weekly_reports)
+        weekly_table = f"<h3 style='margin-top: 30px;'>⚡ Weekly 15%+ Gainers (Top 50)</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Weekly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{weekly_rows}</table>" if weekly_reports else "<h3 style='margin-top: 30px;'>⚡ Weekly 15%+ Gainers</h3><p>No weekly 15%+ stocks found.</p>"
 
     dropped_rows = ""
     for stock in dropped_stocks:
         dropped_rows += f"<tr><td style='color: red;'><b>{stock}</b></td><td>🔴 Dropped from List</td></tr>"
     dropped_table = f"<h3 style='margin-top: 30px; border-bottom: 2px solid red;'>🔻 Dropped Stocks</h3><table><tr><th>Stock</th><th>Reason</th></tr>{dropped_rows}</table>" if dropped_stocks else ""
 
-    html_content = f"<html><head><style>body {{ font-family: Arial, sans-serif; padding: 10px; color: #333; }} table {{ border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 15px; }} th, td {{ border: 1px solid #e0e0e0; padding: 10px; text-align: left; vertical-align: top; }} th {{ background-color: #111827; color: white; }}</style></head><body><h2>📈 NSE {report_type} Swing Screener</h2>{main_table} {dropped_table}</body></html>"
+    html_content = f"""
+    <html><head><style>
+      body {{ font-family: Arial, sans-serif; padding: 10px; color: #333; }}
+      table {{ border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }}
+      th, td {{ border: 1px solid #e0e0e0; padding: 10px; text-align: left; vertical-align: top; }}
+      th {{ background-color: #111827; color: white; }}
+      h3 {{ color: #1f2937; border-bottom: 2px solid #3b82f6; padding-bottom: 5px; }}
+    </style></head>
+    <body>
+    <h2>🚀 NSE Swing Screener ({day_name})</h2>
+    {monthly_table}
+    {weekly_table}
+    {dropped_table}
+    </body></html>
+    """
     
     msg.attach(MIMEText(html_content, "html", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
@@ -220,39 +266,54 @@ def send_email(active_reports, dropped_stocks, is_monday):
         server.send_message(msg)
 
 if __name__ == "__main__":
-    print(f"🚀 സ്മാർട്ട് സ്വിങ് ഏജന്റ് പ്രവർത്തിച്ചുതുടങ്ങി...")
+    print(f"🚀 ഡേ-വൈസ് സ്വിങ് ഏജന്റ് പ്രവർത്തിച്ചുതുടങ്ങി...")
     
     all_tickers = get_all_nse_tickers()
     previous_stocks = load_previous_stocks()
     
-    current_filtered_dict, is_monday = get_filtered_stocks(all_tickers, batch_size=15)
-    current_stocks_list = list(current_filtered_dict.keys())
+    selected_monthly, selected_weekly, is_full_monthly, run_monthly, run_weekly = get_filtered_stocks(all_tickers, batch_size=15)
     
+    monthly_dict = {item['stock']: item for item in selected_monthly}
+    weekly_dict = {item['stock']: item for item in selected_weekly}
+    
+    current_stocks_list = list(set(list(monthly_dict.keys()) + list(weekly_dict.keys())))
     new_stocks = set(current_stocks_list) - set(previous_stocks)
     retained_stocks = set(current_stocks_list).intersection(set(previous_stocks))
     dropped_stocks = set(previous_stocks) - set(current_stocks_list)
     
-    print(f"\n✅ മാറ്റങ്ങൾ: {len(new_stocks)} New, {len(retained_stocks)} Retained, {len(dropped_stocks)} Dropped.")
+    monthly_reports = []
+    weekly_reports = []
     
-    final_reports = []
-    
-    for stock in current_stocks_list:
-        print(f"🤖 AI അനാലിസിസ് നടക്കുന്നു: {stock}...")
-        data = current_filtered_dict[stock]
-        ai_report = run_ai_analysis(stock, data)
+    if run_monthly:
+        print("\n🤖 Monthly സ്റ്റോക്കുകളുടെ AI അനാലിസിസ്...")
+        for stock, data in monthly_dict.items():
+            print(f"   • Monthly: {stock}")
+            status = "NEW" if stock in new_stocks else "RETAINED"
+            ai_rep = run_ai_analysis(stock, data, 'Monthly')
+            monthly_reports.append({
+                "stock": stock, "status": status, "price": f"₹{data['price']:.2f}",
+                "gain": f"{data['monthly_gain']:.2f}% (M)", "technicals": f"RSI: {data['rsi']:.1f} | RVOL: {data['rvol']:.1f}x",
+                "trend": ai_rep.get("trend", "N/A"),
+                "entry_sl_target": f"Entry: {ai_rep.get('entry')} <br><span style='color:red;'>SL: {ai_rep.get('stop_loss')}</span> <br><span style='color:green;'>Tgt: {ai_rep.get('target')}</span>",
+                "conviction": ai_rep.get("conviction", "N/A"), "probability": ai_rep.get("probability_rate", "N/A")
+            })
+            time.sleep(random.uniform(10, 15))
         
-        status = "NEW" if stock in new_stocks else "RETAINED"
-        
-        final_reports.append({
-            "stock": stock, "status": status, "price": f"₹{data['price']:.2f}",
-            "gain": f"{data['gain']:.2f}%", "technicals": f"RSI: {data['rsi']:.1f} | RVOL: {data['rvol']:.1f}x",
-            "trend": ai_report.get("trend", "N/A"),
-            "entry_sl_target": f"Entry: {ai_report.get('entry')} <br><span style='color:red;'>SL: {ai_report.get('stop_loss')}</span> <br><span style='color:green;'>Tgt: {ai_report.get('target')}</span>",
-            "conviction": ai_report.get("conviction", "N/A"), "probability": ai_report.get("probability_rate", "N/A")
-        })
-        
-        time.sleep(random.uniform(15, 25)) 
-        
-    send_email(final_reports, list(dropped_stocks), is_monday)
+    if run_weekly:
+        print("\n🤖 Weekly സ്റ്റോക്കുകളുടെ AI അനാലിസിസ്...")
+        for stock, data in weekly_dict.items():
+            print(f"   • Weekly: {stock}")
+            w_status = "NEW" if stock not in previous_stocks else "RETAINED"
+            ai_rep = run_ai_analysis(stock, data, 'Weekly')
+            weekly_reports.append({
+                "stock": stock, "status": w_status, "price": f"₹{data['price']:.2f}",
+                "gain": f"{data['weekly_gain']:.2f}% (W)", "technicals": f"RSI: {data['rsi']:.1f} | RVOL: {data['rvol']:.1f}x",
+                "trend": ai_rep.get("trend", "N/A"),
+                "entry_sl_target": f"Entry: {ai_rep.get('entry')} <br><span style='color:red;'>SL: {ai_rep.get('stop_loss')}</span> <br><span style='color:green;'>Tgt: {ai_rep.get('target')}</span>",
+                "conviction": ai_rep.get("conviction", "N/A"), "probability": ai_rep.get("probability_rate", "N/A")
+            })
+            time.sleep(random.uniform(10, 15))
+            
+    send_email(monthly_reports, weekly_reports, list(dropped_stocks), run_monthly, run_weekly)
     save_current_stocks(current_stocks_list)
-    print("🎉 അനാലിസിസും മെയിലും വിജയകരമായി പൂർത്തിയായി!")
+    print("🎉 എല്ലാ പ്രക്രിയകളും വിജയകരമായി പൂർത്തിയായി!")
