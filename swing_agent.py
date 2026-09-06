@@ -9,7 +9,7 @@ import requests
 import io
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # പാക്കേജുകൾ ഓട്ടോമാറ്റായി ഇൻസ്റ്റാൾ ചെയ്യുന്നു
 REQUIRED_PACKAGES = ["yfinance", "pandas", "google-genai", "pandas-ta", "requests", "cloudscraper"]
@@ -40,6 +40,10 @@ if not GEMINI_API_KEY:
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 PREVIOUS_DATA_FILE = "previous_stocks.json"
+
+# IST സമയം എടുക്കാൻ
+def get_ist_now():
+    return datetime.now(timezone(timedelta(hours=5, minutes=30)))
 
 # ================= 1. ROBUST NSE FETCH =================
 def get_all_nse_tickers():
@@ -145,41 +149,45 @@ def get_filtered_stocks(tickers, batch_size=15):
     monthly_shortlisted = sorted(monthly_shortlisted, key=lambda x: x['monthly_gain'], reverse=True)
     weekly_shortlisted = sorted(weekly_shortlisted, key=lambda x: x['weekly_gain'], reverse=True)
     
-    current_weekday = datetime.now().weekday() # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri
+    current_weekday = get_ist_now().weekday() # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
     manual_mode = os.getenv("RUN_MODE", "auto")
     
     if manual_mode == "full":
         run_monthly = True
         is_full_monthly = True
         run_weekly = True
+        is_full_weekly = True
     elif manual_mode == "top_80":
         run_monthly = True
         is_full_monthly = False
-        run_weekly = False
+        run_weekly = True
+        is_full_weekly = False
     else:
-        # പുതിയ ഡേ-വൈസ് ഷെഡ്യൂൾ ലോജിക്
-        run_monthly = current_weekday in [0, 1, 3]  # Mon, Tue, Thu
-        is_full_monthly = (current_weekday == 0)    # Mon മാത്രം ഫുൾ, ബാക്കി ടോപ്പ് 80
-        run_weekly = current_weekday in [0, 2, 4]   # Mon, Wed, Fri
+        # പുതിയ പുതിയ ഷെഡ്യൂൾ ലോജിക് (Sat, Sun, Wed, Fri മാത്രം)
+        run_monthly = (current_weekday == 5)         # Sat മാത്രം മന്ത്ലി ഫുൾ
+        is_full_monthly = (current_weekday == 5)
+        
+        run_weekly = current_weekday in [5, 6, 2, 4] # Sat, Sun, Wed, Fri
+        is_full_weekly = (current_weekday == 6)      # Sun മാത്രം വീക്ലി ഓൾ സ്റ്റോക്സ്
     
     # Monthly Selection
     if run_monthly:
-        if is_full_monthly:
-            selected_monthly = monthly_shortlisted
-        else:
-            selected_monthly = monthly_shortlisted[:80]
+        selected_monthly = monthly_shortlisted # Sat ആയതുകൊണ്ട് ഫുൾ മാർക്കറ്റ്
     else:
         selected_monthly = []
 
     # Weekly Selection
     if run_weekly:
-        selected_weekly = weekly_shortlisted[:50]
+        if is_full_weekly:
+            selected_weekly = weekly_shortlisted  # Sun ആയതുകൊണ്ട് എല്ലാ വീക്ലി സ്റ്റോക്സും (All stocks)
+        else:
+            selected_weekly = weekly_shortlisted[:50] # Sat, Wed, Fri ആയതുകൊണ്ട് ടോപ്പ് 50
     else:
         selected_weekly = []
         
-    return selected_monthly, selected_weekly, is_full_monthly, run_monthly, run_weekly
+    return selected_monthly, selected_weekly, is_full_monthly, is_full_weekly, run_monthly, run_weekly
 
-# ================= 4. AI ANALYSIS =================
+# ================= 4. TOKEN-OPTIMIZED AI ANALYSIS =================
 def run_ai_analysis(ticker, data, timeframe_type):
     gain_val = data['monthly_gain'] if timeframe_type == 'Monthly' else data['weekly_gain']
     prompt = f"Stk:{ticker},TF:{timeframe_type},P:{data['price']:.1f},G:{gain_val:.1f}%,RSI:{data['rsi']:.1f},E20:{data['ema20']:.1f},E50:{data['ema50']:.1f},RV:{data['rvol']:.1f},ATR:{data['atr']:.1f}. Reply ONLY valid JSON: {{\"T\":\"trend<5 words\",\"E\":\"entry\",\"S\":\"SL\",\"Tar\":\"target\",\"C\":\"High/Med/Low\",\"P\":\"prob%\"}}"
@@ -213,12 +221,12 @@ def run_ai_analysis(ticker, data, timeframe_type):
                 }
 
 # ================= 5. EMAIL SYSTEM =================
-def send_email(monthly_reports, weekly_reports, dropped_stocks, run_monthly, run_weekly):
+def send_email(monthly_reports, weekly_reports, dropped_stocks, run_monthly, run_weekly, is_full_weekly):
     msg = MIMEMultipart("alternative")
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
     
-    day_name = datetime.now().strftime('%A')
+    day_name = get_ist_now().strftime('%A')
     msg["Subject"] = f"🚀 NSE Swing Alert ({day_name} Report)"
     
     def build_rows(reports):
@@ -232,17 +240,19 @@ def send_email(monthly_reports, weekly_reports, dropped_stocks, run_monthly, run
     monthly_table = ""
     if run_monthly:
         monthly_rows = build_rows(monthly_reports)
-        monthly_table = f"<h3>📈 Monthly 15%+ Gainers</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Monthly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{monthly_rows}</table>" if monthly_reports else "<h3>📈 Monthly 15%+ Gainers</h3><p>No stocks found.</p>"
+        monthly_table = f"<h3>📈 Monthly Full Market Gainers</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Monthly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{monthly_rows}</table>" if monthly_reports else "<h3>📈 Monthly Gainers</h3><p>No stocks found.</p>"
 
     weekly_table = ""
     if run_weekly:
         weekly_rows = build_rows(weekly_reports)
-        weekly_table = f"<h3 style='margin-top: 30px;'>⚡ Weekly 15%+ Gainers (Top 50)</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Weekly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{weekly_rows}</table>" if weekly_reports else "<h3 style='margin-top: 30px;'>⚡ Weekly 15%+ Gainers</h3><p>No weekly 15%+ stocks found.</p>"
+        w_title = "⚡ Weekly All Gainers (All Stocks)" if is_full_weekly else "⚡ Weekly 15%+ Gainers (Top 50)"
+        weekly_table = f"<h3 style='margin-top: 30px;'>{w_title}</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Weekly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{weekly_rows}</table>" if weekly_reports else f"<h3 style='margin-top: 30px;'>{w_title}</h3><p>No weekly stocks found.</p>"
 
     dropped_rows = ""
     for stock in dropped_stocks:
         dropped_rows += f"<tr><td style='color: red;'><b>{stock}</b></td><td>🔴 Dropped from List</td></tr>"
-    dropped_table = f"<h3 style='margin-top: 30px; border-bottom: 2px solid red;'>🔻 Dropped Stocks</h3><table><tr><th>Stock</th><th>Reason</th></tr>{dropped_rows}</table>" if dropped_stocks else ""
+    dropped_table = f"<h3 style='margin-top: 30px; border-bottom: 2px solid red;'>" \
+                    f"🔻 Dropped Stocks</h3><table><tr><th>Stock</th><th>Reason</th></tr>{dropped_rows}</table>" if dropped_stocks else ""
 
     html_content = f"""
     <html><head><style>
@@ -266,12 +276,12 @@ def send_email(monthly_reports, weekly_reports, dropped_stocks, run_monthly, run
         server.send_message(msg)
 
 if __name__ == "__main__":
-    print(f"🚀 ഡേ-വൈസ് സ്വിങ് ഏജന്റ് പ്രവർത്തിച്ചുതുടങ്ങി...")
+    print(f"🚀 പുതിയ ഷെഡ്യൂൾ സ്വിങ് ഏജന്റ് പ്രവർത്തിച്ചുതുടങ്ങി...")
     
     all_tickers = get_all_nse_tickers()
     previous_stocks = load_previous_stocks()
     
-    selected_monthly, selected_weekly, is_full_monthly, run_monthly, run_weekly = get_filtered_stocks(all_tickers, batch_size=15)
+    selected_monthly, selected_weekly, is_full_monthly, is_full_weekly, run_monthly, run_weekly = get_filtered_stocks(all_tickers, batch_size=15)
     
     monthly_dict = {item['stock']: item for item in selected_monthly}
     weekly_dict = {item['stock']: item for item in selected_weekly}
@@ -314,6 +324,6 @@ if __name__ == "__main__":
             })
             time.sleep(random.uniform(10, 15))
             
-    send_email(monthly_reports, weekly_reports, list(dropped_stocks), run_monthly, run_weekly)
+    send_email(monthly_reports, weekly_reports, list(dropped_stocks), run_monthly, run_weekly, is_full_weekly)
     save_current_stocks(current_stocks_list)
     print("🎉 എല്ലാ പ്രക്രിയകളും വിജയകരമായി പൂർത്തിയായി!")
