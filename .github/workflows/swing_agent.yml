@@ -2,12 +2,12 @@ name: Pro Swing Agent
 
 on:
   schedule:
-    # 22:30 UTC എന്നത് ഇന്ത്യൻ സമയം എല്ലാ ദിവസവും പുലർച്ചെ 4:00 AM ആണ്
-    - cron: '30 22 * * *'
+    # 22:30 UTC from Sunday to Thursday corresponds to Mon to Fri at 4:00 AM IST
+    - cron: '30 22 * * 0,1,2,3,4'
   workflow_dispatch: 
     inputs:
       run_mode:
-        description: 'Run Mode (auto = Monday Full / Daily Top 80)'
+        description: 'Run Mode (auto = Day-wise logic / full / top_80)'
         required: true
         default: 'auto'
         type: choice
