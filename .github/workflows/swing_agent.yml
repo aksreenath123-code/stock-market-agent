@@ -2,8 +2,8 @@ name: Pro Swing Agent
 
 on:
   schedule:
-    # 19:30 UTC on Sat, Sun, Mon, Tue, Wed, Thu corresponds to Sun, Mon, Tue, Wed, Thu, Fri at 1:00 AM IST
-    - cron: '30 19 * * 0,1,2,3,4,6'
+    # 19:30 UTC on Tue, Thu, Fri, Sat corresponds to Wed, Fri, Sat, Sun at 1:00 AM IST
+    - cron: '30 19 * * 2,4,5,6'
   workflow_dispatch: 
     inputs:
       run_mode:
