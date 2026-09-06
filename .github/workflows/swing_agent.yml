@@ -39,7 +39,7 @@ jobs:
 
       - name: Run Pro Swing Agent Script
         env:
-          IPO_GEMINI_API_KEY: ${{ secrets.SSTY_GEMINI_API_KEY }}
+          IPO_GEMINI_API_KEY: ${{ secrets.IPO_GEMINI_API_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
