@@ -22,7 +22,7 @@ jobs:
 
       - name: വീക്ക്‌ലി ന്യൂസ് ഏജന്റ് റൺ ചെയ്യുന്നു (Saturday 6:00 PM IST)
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.SSH_GEMINI_API_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
