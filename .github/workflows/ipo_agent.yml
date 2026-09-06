@@ -26,7 +26,7 @@ jobs:
       - name: Run IPO Analysis Script
         env:
           # ഇവിടെ പുതിയ സീക്രട്ട് പേര് നൽകിയിരിക്കുന്നു
-          IPO_GEMINI_API_KEY: ${{ secrets.SSH1_GEMINI_API_KEY }}
+          IPO_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
