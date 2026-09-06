@@ -38,7 +38,7 @@ jobs:
 
       - name: Run AI Market Agent Script
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.RAT_GEMINI_API_KEY }}
           GMAIL_SENDER: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           GMAIL_RECEIVER: ${{ secrets.RECEIVER_EMAIL }}
