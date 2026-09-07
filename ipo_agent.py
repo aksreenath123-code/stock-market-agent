@@ -42,7 +42,7 @@ if api_key:
 else:
     print("DEBUG: SREE_GEMINI_API_KEY is None or empty!")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=SREE_GEMINI_API_KEY)
 
 
 
