@@ -21,7 +21,7 @@ GMAIL_SENDER = os.environ.get("GMAIL_SENDER")
 GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 GMAIL_RECEIVER = os.environ.get("GMAIL_RECEIVER")
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
-GEMINI_API_KEY = os.environ.get("RAT2_GEMINI_API_KEY") 
+IPO_GEMINI_API_KEY = os.environ.get("IPO_GEMINI_API_KEY") 
 MONEYCONTROL_COOKIE = os.environ.get("MONEYCONTROL_COOKIE") 
 
 SHEET_ID = "1Voy-zrWnAbT4ICqThGLZ6tJJJPWYJ0VuFI8nC-BmBqI" 
@@ -154,7 +154,7 @@ def get_ai_analysis(technical_data, is_night_mode=False):
     if not technical_data: return []
     
     print(f"Asking AI for Market Analysis (Night Mode: {is_night_mode})...")
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=IPO_GEMINI_API_KEY)
     all_ai_results = []
     
     if not is_night_mode:
