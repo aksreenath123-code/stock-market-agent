@@ -153,9 +153,9 @@ def send_failure_email(error_message):
     msg["Subject"] = "❌ ALERT: Banana Patterns Analysis Failed"
     html_content = f"""
     <html><body style="font-family: Arial, sans-serif;">
-    <h3 style="color: #c0392b;">⚠️ Banana Agent Failed (After 3 Retries)</h3>
+    <h3 style="color: #c0392b;">⚠️ Banana Agent Failed (After Multi-Retries)</h3>
     <pre style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 4px;">{error_message}</pre>
-    <p>കുക്കി എക്സ്പയർ ആയോ എന്ന് പരിശോധിക്കുക.</p>
+    <p>API സെർവർ തിരക്ക് കാരണമോ അല്ലെങ്കിൽ കുക്കി എക്സ്പയർ ആയതുകൊണ്ടോ ആകാം ഇത് സംഭവിച്ചത്.</p>
     </body></html>
     """
     msg.attach(MIMEText(html_content, "html", "utf-8"))
@@ -163,7 +163,7 @@ def send_failure_email(error_message):
         server.login(SENDER_EMAIL, GMAIL_APP_PASSWORD)
         server.send_message(msg)
 
-# ==================== 6. MAIN EXECUTION WITH 3-RETRY LOGIC ====================
+# ==================== 6. MAIN EXECUTION WITH EXTENDED EXPONENTIAL RETRY LOGIC ====================
 if __name__ == "__main__":
     if not BANANA_COOKIE:
         print("❌ BANANA_COOKIE കാണുന്നില്ല! GitHub Secrets പരിശോധിക്കുക.")
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     extracted_data = fetch_banana_data()
     
     if extracted_data.strip():
-        max_retries = 3
+        max_retries = 6 # റീട്രൈകളുടെ എണ്ണം കൂട്ടി
         success = False
         last_error = ""
         
@@ -187,12 +187,15 @@ if __name__ == "__main__":
             except Exception as e:
                 last_error = str(e)
                 print(f"⚠️ Attempt {attempt + 1} പരാജയപ്പെട്ടു: {e}")
+                
                 if attempt < max_retries - 1:
-                    print("⏳ 1 മിനിറ്റിനുശേഷം റീട്രൈ ചെയ്യുന്നു (Waiting 60 seconds)...")
-                    time.sleep(60)
+                    # കാത്തിരിക്കുന്ന സമയം പതുക്കെ കൂട്ടുന്നു (1 min, 2 mins, 3 mins...)
+                    wait_time = (attempt + 1) * 60 
+                    print(f"⏳ API തിരക്കായതിനാൽ {wait_time} സെക്കൻഡുകൾക്ക് ശേഷം വീണ്ടും ശ്രമിക്കുന്നു (Waiting {wait_time} seconds)...")
+                    time.sleep(wait_time)
         
         if not success:
-            print("❌ 3 തവണ ശ്രമിച്ചിട്ടും പരാജയപ്പെട്ടു.")
+            print(f"❌ {max_retries} തവണ ശ്രമിച്ചിട്ടും പരാജയപ്പെട്ടു.")
             send_failure_email(last_error)
             sys.exit(1)
     else:
