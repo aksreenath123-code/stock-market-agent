@@ -29,6 +29,7 @@ from google import genai
 
 # ==================== 2. API കോൺഫിഗറേഷൻ ====================
 GEMINI_API_KEY1 = os.getenv("SREE_GEMINI_API_KEY1")
+GEMINI_API_KEY1 = os.getenv("SREE_GEMINI_API_KEY1")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
