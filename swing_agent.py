@@ -40,11 +40,26 @@ if not GEMINI_API_KEY:
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 PREVIOUS_DATA_FILE = "previous_stocks.json"
+CACHE_DATA_FILE = "cache_analysis.json"
 
 def get_ist_now():
     return datetime.now(timezone(timedelta(hours=5, minutes=30)))
 
-# ================= 1. ROBUST NSE FETCH =================
+# ================= 1. CACHE MANAGEMENT =================
+def load_cache():
+    if os.path.exists(CACHE_DATA_FILE):
+        try:
+            with open(CACHE_DATA_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_cache(cache_dict):
+    with open(CACHE_DATA_FILE, "w") as f:
+        json.dump(cache_dict, f)
+
+# ================= 2. ROBUST NSE FETCH =================
 def get_all_nse_tickers():
     print("🌐 NSE-യിൽ നിന്നും സ്റ്റോക്ക് ലിസ്റ്റ് എടുക്കുന്നു...")
     url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
@@ -66,7 +81,7 @@ def get_all_nse_tickers():
         time.sleep(min(attempt * 10, 60))
         attempt += 1
 
-# ================= 2. DELTA TRACKING =================
+# ================= 3. DELTA TRACKING =================
 def load_previous_stocks():
     if os.path.exists(PREVIOUS_DATA_FILE):
         try:
@@ -80,7 +95,7 @@ def save_current_stocks(stocks_list):
     with open(PREVIOUS_DATA_FILE, "w") as f:
         json.dump(stocks_list, f)
 
-# ================= 3. PRE-FILTERING (MONTHLY & WEEKLY) =================
+# ================= 4. PRE-FILTERING (MONTHLY & WEEKLY) =================
 def get_filtered_stocks(tickers, batch_size=15):
     monthly_shortlisted = []
     weekly_shortlisted = []
@@ -143,20 +158,43 @@ def get_filtered_stocks(tickers, batch_size=15):
             except Exception:
                 pass
                 
-        time.sleep(random.uniform(10, 20)) 
+        time.sleep(random.uniform(5, 10)) 
         
     monthly_shortlisted = sorted(monthly_shortlisted, key=lambda x: x['monthly_gain'], reverse=True)
     weekly_shortlisted = sorted(weekly_shortlisted, key=lambda x: x['weekly_gain'], reverse=True)
     
-    # ടോക്കൺ ലാഭിക്കാൻ ടോപ്പ് 15 സ്റ്റോക്കുകൾ മാത്രം എഐക്ക് കൊടുക്കുന്നു
-    selected_monthly = monthly_shortlisted[:15]
-    selected_weekly = weekly_shortlisted[:15]
+    current_weekday = get_ist_now().weekday() # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
+    manual_mode = os.getenv("RUN_MODE", "auto")
+    
+    if manual_mode == "full":
+        run_monthly, is_full_monthly, run_weekly, is_full_weekly = True, True, True, True
+    elif manual_mode == "top_80":
+        run_monthly, is_full_monthly, run_weekly, is_full_weekly = True, False, True, False
+    else:
+        run_monthly = (current_weekday == 5)
+        is_full_monthly = (current_weekday == 5)
+        run_weekly = current_weekday in [5, 6, 2, 4]
+        is_full_weekly = (current_weekday == 6)
+    
+    selected_monthly = monthly_shortlisted if run_monthly else []
+    if run_weekly:
+        selected_weekly = weekly_shortlisted if is_full_weekly else weekly_shortlisted[:50]
+    else:
+        selected_weekly = []
         
-    return selected_monthly, selected_weekly
+    return selected_monthly, selected_weekly, is_full_monthly, is_full_weekly, run_monthly, run_weekly
 
-# ================= 4. TOKEN-OPTIMIZED AI ANALYSIS =================
-def run_ai_analysis(ticker, data, timeframe_type):
+# ================= 5. TOKEN-OPTIMIZED AI WITH CACHING =================
+def run_ai_analysis(ticker, data, timeframe_type, cache_dict):
     gain_val = data['monthly_gain'] if timeframe_type == 'Monthly' else data['weekly_gain']
+    cache_key = f"{ticker}_{timeframe_type}_{int(data['price'])}_{int(gain_val)}"
+    
+    # ക്യാഷിൽ ഉണ്ടെങ്കിൽ എഐ കോൾ ഒഴിവാക്കി ടോക്കൺ പൂർണ്ണമായും ലാഭിക്കാം
+    if cache_key in cache_dict:
+        print(f"   ⚡ Cache Hit: {ticker} ({timeframe_type})")
+        return cache_dict[cache_key]
+
+    # അതിസൂക്ഷ്മമായ ടോക്കൺ ഒപ്റ്റിമൈസ്ഡ് പ്രോംപ്റ്റ്
     prompt = f"Stk:{ticker},TF:{timeframe_type},P:{data['price']:.1f},G:{gain_val:.1f}%,RSI:{data['rsi']:.1f},E20:{data['ema20']:.1f},E50:{data['ema50']:.1f},RV:{data['rvol']:.1f},ATR:{data['atr']:.1f}. Reply ONLY valid JSON: {{\"T\":\"trend<5 words\",\"E\":\"entry\",\"S\":\"SL\",\"Tar\":\"target\",\"C\":\"High/Med/Low\",\"P\":\"prob%\"}}"
     
     attempt = 1
@@ -166,7 +204,7 @@ def run_ai_analysis(ticker, data, timeframe_type):
             raw_text = response.text.strip().replace('```json', '').replace('```', '')
             res_json = json.loads(raw_text)
             
-            return {
+            result = {
                 "trend": res_json.get("T", "Uptrend momentum"),
                 "entry": res_json.get("E", f"₹{data['price']:.1f}"),
                 "stop_loss": res_json.get("S", f"₹{data['price'] - data['atr']:.1f}"),
@@ -174,8 +212,13 @@ def run_ai_analysis(ticker, data, timeframe_type):
                 "conviction": res_json.get("C", "Medium"),
                 "probability_rate": res_json.get("P", "70%")
             }
+            
+            # പുതിയ റിസൾട്ട് ക്യാഷിൽ സേവ് ചെയ്യുന്നു
+            cache_dict[cache_key] = result
+            return result
         except Exception as e:
-            time.sleep(20 * attempt)
+            print(f"⚠️ AI Error for {ticker} (Attempt {attempt}): {e}. വീണ്ടും ശ്രമിക്കുന്നു...")
+            time.sleep(15 * attempt)
             attempt += 1
             if attempt > 4:
                 return {
@@ -187,14 +230,14 @@ def run_ai_analysis(ticker, data, timeframe_type):
                     "probability_rate": "65%"
                 }
 
-# ================= 5. EMAIL SYSTEM =================
-def send_email(monthly_reports, weekly_reports, dropped_stocks):
+# ================= 6. EMAIL SYSTEM (UNCHANGED COLOR CODING) =================
+def send_email(monthly_reports, weekly_reports, dropped_stocks, run_monthly, run_weekly, is_full_weekly):
     msg = MIMEMultipart("alternative")
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
     
     day_name = get_ist_now().strftime('%A')
-    msg["Subject"] = f"🚀 NSE Swing Alert ({day_name} - Monthly & Weekly Report)"
+    msg["Subject"] = f"🚀 NSE Swing Alert ({day_name} Report)"
     
     def build_rows(reports):
         r_html = ""
@@ -204,16 +247,22 @@ def send_email(monthly_reports, weekly_reports, dropped_stocks):
             r_html += f"<tr><td><b>{item['stock']}</b><br><span style='color: blue;'>{item['price']}</span></td><td><b>{status_icon}</b></td><td><span style='color: green; font-weight: bold;'>{item['gain']}</span><br><span style='font-size: 12px; color: gray;'>{item['technicals']}</span></td><td style='font-size: 13px;'>{item['trend']}</td><td style='font-size: 13px; font-weight: bold;'>{item['entry_sl_target']}</td><td style='text-align: center;'><span style='color: {conv_color}; font-weight: bold;'>{item['conviction']}</span><br>{item['probability']}</td></tr>"
         return r_html
 
-    monthly_rows = build_rows(monthly_reports)
-    weekly_rows = build_rows(weekly_reports)
+    monthly_table = ""
+    if run_monthly:
+        monthly_rows = build_rows(monthly_reports)
+        monthly_table = f"<h3>📈 Monthly Full Market Gainers</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Monthly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{monthly_rows}</table>" if monthly_reports else "<h3>📈 Monthly Gainers</h3><p>No stocks found.</p>"
 
-    monthly_table = f"<h3>📈 Monthly Top 15 Gainers</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Monthly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{monthly_rows}</table>" if monthly_reports else "<h3>📈 Monthly Gainers</h3><p>No stocks found.</p>"
-    weekly_table = f"<h3 style='margin-top: 30px;'>⚡ Weekly Top 15 Gainers</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Weekly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{weekly_rows}</table>" if weekly_reports else "<h3 style='margin-top: 30px;'>⚡ Weekly Gainers</h3><p>No weekly stocks found.</p>"
+    weekly_table = ""
+    if run_weekly:
+        weekly_rows = build_rows(weekly_reports)
+        w_title = "⚡ Weekly All Gainers (All Stocks)" if is_full_weekly else "⚡ Weekly 15%+ Gainers (Top 50)"
+        weekly_table = f"<h3 style='margin-top: 30px;'>{w_title}</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Weekly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{weekly_rows}</table>" if weekly_reports else f"<h3 style='margin-top: 30px;'>{w_title}</h3><p>No weekly stocks found.</p>"
 
     dropped_rows = ""
     for stock in dropped_stocks:
         dropped_rows += f"<tr><td style='color: red;'><b>{stock}</b></td><td>🔴 Dropped from List</td></tr>"
-    dropped_table = f"<h3 style='margin-top: 30px; border-bottom: 2px solid red;'>🔻 Dropped Stocks</h3><table><tr><th>Stock</th><th>Reason</th></tr>{dropped_rows}</table>" if dropped_stocks else ""
+    dropped_table = f"<h3 style='margin-top: 30px; border-bottom: 2px solid red;'>" \
+                    f"🔻 Dropped Stocks</h3><table><tr><th>Stock</th><th>Reason</th></tr>{dropped_rows}</table>" if dropped_stocks else ""
 
     html_content = f"""
     <html><head><style>
@@ -237,12 +286,13 @@ def send_email(monthly_reports, weekly_reports, dropped_stocks):
         server.send_message(msg)
 
 if __name__ == "__main__":
-    print(f"🚀 സാറ്റർഡേ & ട്യൂസ്ഡേ സ്വിങ് ഏജന്റ് പ്രവർത്തിച്ചുതുടങ്ങി...")
+    print(f"🚀 ഒപ്റ്റിമൈസ്ഡ് സ്വിങ് ഏജന്റ് പ്രവർത്തിച്ചുതുടങ്ങി...")
     
     all_tickers = get_all_nse_tickers()
     previous_stocks = load_previous_stocks()
+    cache_dict = load_cache()
     
-    selected_monthly, selected_weekly = get_filtered_stocks(all_tickers, batch_size=15)
+    selected_monthly, selected_weekly, is_full_monthly, is_full_weekly, run_monthly, run_weekly = get_filtered_stocks(all_tickers, batch_size=15)
     
     monthly_dict = {item['stock']: item for item in selected_monthly}
     weekly_dict = {item['stock']: item for item in selected_weekly}
@@ -255,34 +305,38 @@ if __name__ == "__main__":
     monthly_reports = []
     weekly_reports = []
     
-    print("\n🤖 Monthly സ്റ്റോക്കുകളുടെ AI അനാലിസിസ്...")
-    for stock, data in monthly_dict.items():
-        print(f"   • Monthly: {stock}")
-        status = "NEW" if stock in new_stocks else "RETAINED"
-        ai_rep = run_ai_analysis(stock, data, 'Monthly')
-        monthly_reports.append({
-            "stock": stock, "status": status, "price": f"₹{data['price']:.2f}",
-            "gain": f"{data['monthly_gain']:.2f}% (M)", "technicals": f"RSI: {data['rsi']:.1f} | RVOL: {data['rvol']:.1f}x",
-            "trend": ai_rep.get("trend", "N/A"),
-            "entry_sl_target": f"Entry: {ai_rep.get('entry')} <br><span style='color:red;'>SL: {ai_rep.get('stop_loss')}</span> <br><span style='color:green;'>Tgt: {ai_rep.get('target')}</span>",
-            "conviction": ai_rep.get("conviction", "N/A"), "probability": ai_rep.get("probability_rate", "N/A")
-        })
-        time.sleep(random.uniform(10, 15))
+    if run_monthly:
+        print("\n🤖 Monthly സ്റ്റോക്കുകളുടെ AI അനാലിസിസ്...")
+        for stock, data in monthly_dict.items():
+            print(f"   • Monthly: {stock}")
+            status = "NEW" if stock in new_stocks else "RETAINED"
+            ai_rep = run_ai_analysis(stock, data, 'Monthly', cache_dict)
+            monthly_reports.append({
+                "stock": stock, "status": status, "price": f"₹{data['price']:.2f}",
+                "gain": f"{data['monthly_gain']:.2f}% (M)", "technicals": f"RSI: {data['rsi']:.1f} | RVOL: {data['rvol']:.1f}x",
+                "trend": ai_rep.get("trend", "N/A"),
+                "entry_sl_target": f"Entry: {ai_rep.get('entry')} <br><span style='color:red;'>SL: {ai_rep.get('stop_loss')}</span> <br><span style='color:green;'>Tgt: {ai_rep.get('target')}</span>",
+                "conviction": ai_rep.get("conviction", "N/A"), "probability": ai_rep.get("probability_rate", "N/A")
+            })
+            time.sleep(random.uniform(5, 10))
         
-    print("\n🤖 Weekly സ്റ്റോക്കുകളുടെ AI അനാലിസിസ്...")
-    for stock, data in weekly_dict.items():
-        print(f"   • Weekly: {stock}")
-        w_status = "NEW" if stock not in previous_stocks else "RETAINED"
-        ai_rep = run_ai_analysis(stock, data, 'Weekly')
-        weekly_reports.append({
-            "stock": stock, "status": w_status, "price": f"₹{data['price']:.2f}",
-            "gain": f"{data['weekly_gain']:.2f}% (W)", "technicals": f"RSI: {data['rsi']:.1f} | RVOL: {data['rvol']:.1f}x",
-            "trend": ai_rep.get("trend", "N/A"),
-            "entry_sl_target": f"Entry: {ai_rep.get('entry')} <br><span style='color:red;'>SL: {ai_rep.get('stop_loss')}</span> <br><span style='color:green;'>Tgt: {ai_rep.get('target')}</span>",
-            "conviction": ai_rep.get("conviction", "N/A"), "probability": ai_rep.get("probability_rate", "N/A")
-        })
-        time.sleep(random.uniform(10, 15))
+    if run_weekly:
+        print("\n🤖 Weekly സ്റ്റോക്കുകളുടെ AI അനാലിസിസ്...")
+        for stock, data in weekly_dict.items():
+            print(f"   • Weekly: {stock}")
+            w_status = "NEW" if stock not in previous_stocks else "RETAINED"
+            ai_rep = run_ai_analysis(stock, data, 'Weekly', cache_dict)
+            weekly_reports.append({
+                "stock": stock, "status": w_status, "price": f"₹{data['price']:.2f}",
+                "gain": f"{data['weekly_gain']:.2f}% (W)", "technicals": f"RSI: {data['rsi']:.1f} | RVOL: {data['rvol']:.1f}x",
+                "trend": ai_rep.get("trend", "N/A"),
+                "entry_sl_target": f"Entry: {ai_rep.get('entry')} <br><span style='color:red;'>SL: {ai_rep.get('stop_loss')}</span> <br><span style='color:green;'>Tgt: {ai_rep.get('target')}</span>",
+                "conviction": ai_rep.get("conviction", "N/A"), "probability": ai_rep.get("probability_rate", "N/A")
+            })
+            time.sleep(random.uniform(5, 10))
             
-    send_email(monthly_reports, weekly_reports, list(dropped_stocks))
+    # ക്യാഷ് ഫയൽ അപ്ഡേറ്റ് ചെയ്ത് സേവ് ചെയ്യുന്നു
+    save_cache(cache_dict)
+    send_email(monthly_reports, weekly_reports, list(dropped_stocks), run_monthly, run_weekly, is_full_weekly)
     save_current_stocks(current_stocks_list)
     print("🎉 എല്ലാ പ്രക്രിയകളും വിജയകരമായി പൂർത്തിയായി!")
