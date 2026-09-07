@@ -26,7 +26,7 @@ jobs:
 
       - name: Run Master Swing Script
         env:
-          SREE_GEMINI_API_KEY: ${{ secrets.SREE_GEMINI_API_KEY }}
+          SREE_GEMINI_API_KEY_TWO: ${{ secrets.SREE_GEMINI_API_KEY_TWO }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
