@@ -2,9 +2,19 @@ name: Pro Swing Agent
 
 on:
   schedule:
-    # 19:30 UTC on Fri & Mon corresponds to Sat & Tue at 1:00 AM IST
-    - cron: '30 19 * * 1,5'
+    # 19:30 UTC on Tue, Thu, Fri, Sat corresponds to Wed, Fri, Sat, Sun at 1:00 AM IST
+    - cron: '30 19 * * 2,4,5,6'
   workflow_dispatch: 
+    inputs:
+      run_mode:
+        description: 'Run Mode (auto = Day-wise logic / full / top_80)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - top_80
+          - full
 
 permissions:
   contents: write
@@ -33,6 +43,7 @@ jobs:
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+          RUN_MODE: ${{ github.event.inputs.run_mode }}
         run: |
           python swing_agent.py
           
