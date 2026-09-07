@@ -34,7 +34,7 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
-if not GEMINI_API_KEY:
+if not IPO_GEMINI_API_KEY_TWO:
     print("⚠️ പിഴവ്: API Key ലഭ്യമായില്ല.")
     sys.exit(1)
 
