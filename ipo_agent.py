@@ -33,9 +33,6 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
-
-
 import os
 
 # സുരക്ഷിതമായി ഡിബഗ് ചെയ്യാൻ
@@ -44,6 +41,11 @@ if api_key:
     print(f"DEBUG: API Key successfully loaded. Length: {len(api_key)}, Starts with: {api_key[:4]}...")
 else:
     print("DEBUG: SREE_GEMINI_API_KEY is None or empty!")
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+
+
 # ==================== 3. BULLETPROOF MULTI-SOURCE FETCHING ====================
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
