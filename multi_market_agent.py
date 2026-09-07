@@ -40,7 +40,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # 3. API കോൺഫിഗറേഷൻ & സീക്രട്ടുകൾ
-GEMINI_API_KEY1 = os.getenv("RAT_GEMINI_API_KEY1")
+GEMINI_API_KEY1 = os.getenv("GEMINI_API_KEY1")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
