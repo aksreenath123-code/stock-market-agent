@@ -36,7 +36,7 @@ RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 import os
 
 # സുരക്ഷിതമായി ഡിബഗ് ചെയ്യാൻ
-api_key = os.getenv("SREE_GEMINI_API_KEY1")
+api_key = os.getenv("SREE_GEMINI_API_KEY")
 if api_key:
     print(f"DEBUG: API Key successfully loaded. Length: {len(api_key)}, Starts with: {api_key[:4]}...")
 else:
