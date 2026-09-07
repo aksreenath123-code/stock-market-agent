@@ -40,13 +40,13 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # 3. API കോൺഫിഗറേഷൻ & സീക്രട്ടുകൾ
-GEMINI_API_KEY = os.getenv("RAT_GEMINI_API_KEY")
+GEMINI_API_KEY1 = os.getenv("RAT_GEMINI_API_KEY1")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 MC_COOKIE = os.getenv("MONEYCONTROL_COOKIE", "")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY1)
 
 # ==================== 4. യൂണിവേഴ്സ് സെലക്ഷൻ ====================
 def get_us_universe():
