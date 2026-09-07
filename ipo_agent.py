@@ -28,7 +28,7 @@ from bs4 import BeautifulSoup
 from google import genai
 
 # ==================== 2. API കോൺഫിഗറേഷൻ ====================
-GEMINI_API_KEY = os.getenv("SREE_GEMINI_API_KEY")
+SREE_GEMINI_API_KEY1 = os.getenv("SREE_GEMINI_API_KEY1")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
@@ -36,7 +36,7 @@ RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 import os
 
 # സുരക്ഷിതമായി ഡിബഗ് ചെയ്യാൻ
-api_key = os.getenv("SREE_GEMINI_API_KEY")
+api_key = os.getenv("SREE_GEMINI_API_KEY1")
 if api_key:
     print(f"DEBUG: API Key successfully loaded. Length: {len(api_key)}, Starts with: {api_key[:4]}...")
 else:
