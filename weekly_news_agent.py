@@ -42,13 +42,13 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # 3. API കോൺഫിഗറേഷൻ & സീക്രട്ടുകൾ
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+SREE_GEMINI_API_KEY = os.getenv("SREE_GEMINI_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 MC_COOKIE = os.getenv("MONEYCONTROL_COOKIE", "")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=SREE_GEMINI_API_KEY)
 
 # ==================== 4. റീട്രൈ മെക്കാനിസം & ടൈംഔട്ട് സജ്ജീകരണങ്ങൾ ====================
 @retry(
