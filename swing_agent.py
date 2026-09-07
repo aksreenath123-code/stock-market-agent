@@ -29,7 +29,7 @@ import cloudscraper
 from google import genai
 
 # API കോൺഫിഗറേഷൻ
-GEMINI_API_KEY = os.getenv("IPO_GEMINI_API_KEY") 
+IPO_GEMINI_API_KEY1 = os.getenv("IPO_GEMINI_API_KEY1") 
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
@@ -38,7 +38,7 @@ if not GEMINI_API_KEY:
     print("⚠️ പിഴവ്: API Key ലഭ്യമായില്ല.")
     sys.exit(1)
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=IPO_GEMINI_API_KEY1)
 PREVIOUS_DATA_FILE = "previous_stocks.json"
 CACHE_DATA_FILE = "cache_analysis.json"
 
