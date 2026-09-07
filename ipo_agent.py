@@ -28,7 +28,7 @@ from bs4 import BeautifulSoup
 from google import genai
 
 # ==================== 2. API കോൺഫിഗറേഷൻ ====================
-SREE_GEMINI_API_KEY = os.getenv("SREE_GEMINI_API_KEY"
+SREE_GEMINI_API_KEY = os.getenv("SREE_GEMINI_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
