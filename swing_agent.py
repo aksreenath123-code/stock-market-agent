@@ -78,8 +78,9 @@ def load_previous_stocks():
     return []
 
 def save_current_stocks(stocks_list):
-    with open(PREVIOUS_DATA_FILE, "w") as f:
-        json.dump(stocks_list, f)
+    if stocks_list:
+        with open(PREVIOUS_DATA_FILE, "w") as f:
+            json.dump(stocks_list, f)
 
 # ================= 3. PRE-FILTERING (MONTHLY & WEEKLY) =================
 def get_filtered_stocks(tickers, batch_size=15):
@@ -157,14 +158,20 @@ def get_filtered_stocks(tickers, batch_size=15):
     elif manual_mode == "top_80":
         run_monthly, is_full_monthly, run_weekly, is_full_weekly = True, False, True, False
     else:
-        # ഷെഡ്യൂൾ ക്രമീകരണം: Sat(5) -> Monthly Full + Weekly Top 50, Sun(6) -> Weekly All, Wed(2)/Fri(4) -> Weekly Top 50, Mon(0) -> Weekly All (ഇന്നലത്തെ പ്രശ്നം പരിഹരിക്കാൻ തിങ്കളാഴ്ചയും ഉൾപ്പെടുത്തി)
-        run_monthly = (current_weekday in [5, 0])     # Sat & Mon മന്ത്ലി റൺ വരാൻ
+        # ഷെഡ്യൂൾ ക്രമീകരണം: Sat(5) -> Monthly Full + Weekly Top 50, Sun(6) -> Weekly All, Wed(2)/Fri(4) -> Weekly Top 50
+        run_monthly = (current_weekday == 5)
         is_full_monthly = (current_weekday == 5)
         
-        run_weekly = current_weekday in [5, 6, 0, 2, 4] # Sat, Sun, Mon, Wed, Fri
-        is_full_weekly = (current_weekday in [6, 0])      # Sun & Mon വീക്ലി ഓൾ സ്റ്റോക്സ്
+        run_weekly = current_weekday in [5, 6, 2, 4]
+        is_full_weekly = (current_weekday == 6)
     
-    selected_monthly = monthly_shortlisted if run_monthly else []
+    # ഡാറ്റ എംറ്റി ആവാതിരിക്കാൻ മാന്വൽ റണ്ണിൽ ഓട്ടോമാറ്റിക് ഫെച്ച് ചെയ്യാൻ
+    if manual_mode == "auto" and not run_monthly and not run_weekly:
+        print("ℹ️ ഇന്നത്തെ ഷെഡ്യൂളിൽ സ്കാനിങ് ഇല്ലെങ്കിലും, എംറ്റി ആവാതിരിക്കാൻ ടോപ്പ് 80 മന്ത്ലി & ടോപ്പ് 50 വീക്ലി എടുത്തു.")
+        run_monthly, run_weekly = True, True
+        is_full_monthly, is_full_weekly = False, False
+
+    selected_monthly = monthly_shortlisted if (is_full_monthly or manual_mode == "full") else monthly_shortlisted[:80] if run_monthly else []
     if run_weekly:
         selected_weekly = weekly_shortlisted if is_full_weekly else weekly_shortlisted[:50]
     else:
@@ -172,7 +179,7 @@ def get_filtered_stocks(tickers, batch_size=15):
         
     return selected_monthly, selected_weekly, is_full_monthly, is_full_weekly, run_monthly, run_weekly
 
-# ================= 4. AI ANALYSIS =================
+# ================= 4. AI ANALYSIS (GEMINI 3.6 FLASH) =================
 def run_ai_analysis(ticker, data, timeframe_type):
     gain_val = data['monthly_gain'] if timeframe_type == 'Monthly' else data['weekly_gain']
     prompt = f"Stk:{ticker},TF:{timeframe_type},P:{data['price']:.1f},G:{gain_val:.1f}%,RSI:{data['rsi']:.1f},E20:{data['ema20']:.1f},E50:{data['ema50']:.1f},RV:{data['rvol']:.1f},ATR:{data['atr']:.1f}. Reply ONLY valid JSON: {{\"T\":\"trend<5 words\",\"E\":\"entry\",\"S\":\"SL\",\"Tar\":\"target\",\"C\":\"High/Med/Low\",\"P\":\"prob%\"}}"
@@ -225,13 +232,13 @@ def send_email(monthly_reports, weekly_reports, run_monthly, run_weekly, is_full
     monthly_table = ""
     if run_monthly:
         monthly_rows = build_rows(monthly_reports)
-        monthly_table = f"<h3>📈 Monthly Gainers</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Monthly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{monthly_rows}</table>" if monthly_reports else "<h3>📈 Monthly Gainers</h3><p>No stocks found for today.</p>"
+        monthly_table = f"<h3>📈 Monthly Gainers</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Monthly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{monthly_rows}</table>" if monthly_reports else "<h3>📈 Monthly Gainers</h3><p style='color: gray;'>ഇന്നത്തെ ലിസ്റ്റിൽ മന്ത്ലി സ്റ്റോക്കുകൾ ലഭ്യമല്ല.</p>"
 
     weekly_table = ""
     if run_weekly:
         weekly_rows = build_rows(weekly_reports)
         w_title = "⚡ Weekly All Gainers (All Stocks)" if is_full_weekly else "⚡ Weekly 15%+ Gainers (Top 50)"
-        weekly_table = f"<h3 style='margin-top: 30px;'>{w_title}</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Weekly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{weekly_rows}</table>" if weekly_reports else f"<h3 style='margin-top: 30px;'>{w_title}</h3><p>No weekly stocks found for today.</p>"
+        weekly_table = f"<h3 style='margin-top: 30px;'>{w_title}</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Weekly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{weekly_rows}</table>" if weekly_reports else f"<h3 style='margin-top: 30px;'>{w_title}</h3><p style='color: gray;'>ഇന്നത്തെ ലിസ്റ്റിൽ വീക്ലി സ്റ്റോക്കുകൾ ലഭ്യമല്ല.</p>"
 
     html_content = f"""
     <html><head><style>
