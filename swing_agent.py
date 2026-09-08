@@ -29,16 +29,16 @@ import cloudscraper
 from google import genai
 
 # API കോൺഫിഗറേഷൻ
-IPO_GEMINI_API_KEY_TWO = os.getenv("IPO_GEMINI_API_KEY_TWO") 
+GEMINI_API_KEY = os.getenv("IPO_GEMINI_API_KEY") 
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
-if not IPO_GEMINI_API_KEY_TWO:
+if not GEMINI_API_KEY:
     print("⚠️ പിഴവ്: API Key ലഭ്യമായില്ല.")
     sys.exit(1)
 
-client = genai.Client(api_key=IPO_GEMINI_API_KEY_TWO)
+client = genai.Client(api_key=GEMINI_API_KEY)
 PREVIOUS_DATA_FILE = "previous_stocks.json"
 
 # IST സമയം എടുക്കാൻ
@@ -157,12 +157,12 @@ def get_filtered_stocks(tickers, batch_size=15):
     elif manual_mode == "top_80":
         run_monthly, is_full_monthly, run_weekly, is_full_weekly = True, False, True, False
     else:
-        # ഷെഡ്യൂൾ ക്രമീകരണം: Sat(5) -> Monthly Full + Weekly Top 50, Sun(6) -> Weekly All, Wed(2)/Fri(4) -> Weekly Top 50
-        run_monthly = (current_weekday == 5)
+        # ഷെഡ്യൂൾ ക്രമീകരണം: Sat(5) -> Monthly Full + Weekly Top 50, Sun(6) -> Weekly All, Wed(2)/Fri(4) -> Weekly Top 50, Mon(0) -> Weekly All (ഇന്നലത്തെ പ്രശ്നം പരിഹരിക്കാൻ തിങ്കളാഴ്ചയും ഉൾപ്പെടുത്തി)
+        run_monthly = (current_weekday in [5, 0])     # Sat & Mon മന്ത്ലി റൺ വരാൻ
         is_full_monthly = (current_weekday == 5)
         
-        run_weekly = current_weekday in [5, 6, 2, 4]
-        is_full_weekly = (current_weekday == 6)
+        run_weekly = current_weekday in [5, 6, 0, 2, 4] # Sat, Sun, Mon, Wed, Fri
+        is_full_weekly = (current_weekday in [6, 0])      # Sun & Mon വീക്ലി ഓൾ സ്റ്റോക്സ്
     
     selected_monthly = monthly_shortlisted if run_monthly else []
     if run_weekly:
