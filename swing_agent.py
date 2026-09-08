@@ -157,8 +157,10 @@ def get_filtered_stocks(tickers, batch_size=15):
     elif manual_mode == "top_80":
         run_monthly, is_full_monthly, run_weekly, is_full_weekly = True, False, True, False
     else:
+        # ഷെഡ്യൂൾ ക്രമീകരണം: Sat(5) -> Monthly Full + Weekly Top 50, Sun(6) -> Weekly All, Wed(2)/Fri(4) -> Weekly Top 50
         run_monthly = (current_weekday == 5)
         is_full_monthly = (current_weekday == 5)
+        
         run_weekly = current_weekday in [5, 6, 2, 4]
         is_full_weekly = (current_weekday == 6)
     
@@ -203,7 +205,7 @@ def run_ai_analysis(ticker, data, timeframe_type):
                     "probability_rate": "65%"
                 }
 
-# ================= 5. EMAIL SYSTEM (SILENT DROPS & PREVIOUS BEAUTIFUL LAYOUT) =================
+# ================= 5. EMAIL SYSTEM =================
 def send_email(monthly_reports, weekly_reports, run_monthly, run_weekly, is_full_weekly):
     msg = MIMEMultipart("alternative")
     msg["From"] = SENDER_EMAIL
@@ -223,15 +225,14 @@ def send_email(monthly_reports, weekly_reports, run_monthly, run_weekly, is_full
     monthly_table = ""
     if run_monthly:
         monthly_rows = build_rows(monthly_reports)
-        monthly_table = f"<h3>📈 Monthly Gainers</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Monthly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{monthly_rows}</table>" if monthly_reports else "<h3>📈 Monthly Gainers</h3><p>No stocks found.</p>"
+        monthly_table = f"<h3>📈 Monthly Gainers</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Monthly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{monthly_rows}</table>" if monthly_reports else "<h3>📈 Monthly Gainers</h3><p>No stocks found for today.</p>"
 
     weekly_table = ""
     if run_weekly:
         weekly_rows = build_rows(weekly_reports)
         w_title = "⚡ Weekly All Gainers (All Stocks)" if is_full_weekly else "⚡ Weekly 15%+ Gainers (Top 50)"
-        weekly_table = f"<h3 style='margin-top: 30px;'>{w_title}</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Weekly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{weekly_rows}</table>" if weekly_reports else f"<h3 style='margin-top: 30px;'>{w_title}</h3><p>No weekly stocks found.</p>"
+        weekly_table = f"<h3 style='margin-top: 30px;'>{w_title}</h3><table><tr><th>Stock & Price</th><th>Status</th><th>Weekly Gain & Tech</th><th>AI Trend</th><th>Trade Plan</th><th>Conviction</th></tr>{weekly_rows}</table>" if weekly_reports else f"<h3 style='margin-top: 30px;'>{w_title}</h3><p>No weekly stocks found for today.</p>"
 
-    # ഡ്രോപ്പ്ഡ് സ്റ്റോക്കുകൾ പൂർണ്ണമായി ഒഴിവാക്കി (Silent drop)
     html_content = f"""
     <html><head><style>
       body {{ font-family: Arial, sans-serif; padding: 10px; color: #333; }}
