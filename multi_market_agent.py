@@ -48,6 +48,47 @@ MC_COOKIE = os.getenv("MONEYCONTROL_COOKIE", "")
 
 client = genai.Client(api_key=IPO_GEMINI_API_KEY)
 
+# ==================== ജെമിനി 3 സീരീസ് റീട്രൈ & ഫോൾബാക്ക് എൻജിൻ ====================
+# ലോവർ മോഡലുകൾ പൂർണ്ണമായി ഒഴിവാക്കി, 3 സീരീസ് മാത്രം നിലനിർത്തുന്നു
+GEMINI_MODELS = [
+    "gemini-3.6-flash",
+    "gemini-3.1-pro"
+]
+
+def generate_report_with_infinite_retry(prompt, retry_interval_minutes=15, max_total_hours=3):
+    """
+    സക്സസ്ഫുൾ ആകുന്നതുവരെ ഓരോ 15 മിനിറ്റിലും 3.6-flash & 3.1-pro മോഡലുകൾ മാറിമാറി റീ-ട്രൈ ചെയ്യുന്നു.
+    """
+    start_time = time.time()
+    max_duration_seconds = max_total_hours * 3600
+    cycle_count = 1
+
+    while True:
+        for model_name in GEMINI_MODELS:
+            print(f"🤖 ശ്രമിക്കുന്നു: {model_name} (Cycle #{cycle_count})...")
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                if response and response.text:
+                    print(f"✅ വിജയകരമായി റിപ്പോർട്ട് തയ്യാറാക്കി ({model_name})!")
+                    return response.text.replace("```html", "").replace("```", "").strip()
+            except Exception as e:
+                err_str = str(e)
+                print(f"⚠️ {model_name} പരാജയപ്പെട്ടു: {err_str[:160]}...")
+                time.sleep(5)  # അടുത്ത മോഡലിലേക്ക് മാറുന്നതിന് മുൻപുള്ള ചെറിയ ഇടവേള
+
+        # രണ്ട് മോഡലുകളും ബിസിയാണെങ്കിൽ 15 മിനിറ്റ് കാത്തിരിക്കുന്നു
+        elapsed = time.time() - start_time
+        if elapsed >= max_duration_seconds:
+            raise RuntimeError(f"❌ {max_total_hours} മണിക്കൂർ തുടർച്ചയായി ശ്രമിച്ചിട്ടും മോഡലുകൾ ലഭ്യമായില്ല.")
+
+        wait_seconds = retry_interval_minutes * 60
+        print(f"⏳ സെർവർ തിരക്കിലാണ്. അടുത്ത റീട്രൈ {retry_interval_minutes} മിനിറ്റിനുശേഷം നടക്കും (ആകെ കഴിഞ്ഞ സമയം: {int(elapsed//60)} മിനിറ്റ്)...")
+        time.sleep(wait_seconds)
+        cycle_count += 1
+
 # ==================== 4. യൂണിവേഴ്സ് സെലക്ഷൻ ====================
 def get_us_universe():
     return [
@@ -81,14 +122,12 @@ def calculate_rsi(series, period=14):
     return 100 - (100 / (1 + rs))
 
 def evaluate_stock_momentum(ticker):
-    """ഓരോ സ്റ്റോക്കും தனித்தனியாக എടുത്ത് കൃത്യമായ ലൈവ് വിലയും ഇൻഡിക്കേറ്ററുകളും ഉറപ്പാക്കുന്നു"""
     try:
         stock = yf.Ticker(ticker)
         df = stock.history(period="6mo", interval="1d")
         if df.empty or len(df) < 60:
             return None
             
-        # MultiIndex പ്രശ്നങ്ങൾ ഒഴിവാക്കാൻ കോളം കൺവേർഷൻ
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = [col[0] for col in df.columns]
 
@@ -174,7 +213,7 @@ def robust_market_scan(tickers, market_type="indian"):
                 f"[STRICT LEVELS -> Entry: {currency}{entry_low} - {currency}{entry_high}, Target: {currency}{target}, SL: {currency}{stop_loss}]"
             )
         })
-        time.sleep(0.2) # സുരക്ഷിതമായ ഡാറ്റ ഫെച്ചിംഗിന് വേണ്ടി
+        time.sleep(0.2)
         
     scored_stocks.sort(key=lambda x: x['score'], reverse=True)
     return [stock['text'] for stock in scored_stocks[:35]]
@@ -218,8 +257,8 @@ def fetch_indian_market():
     ഈ ഡാറ്റ വെച്ച് പ്രൊഫഷണൽ അനാലിസിസ് അടങ്ങിയ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
     """
     
-    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🇮🇳 Indian Market: Accurate Price Swing Radar", response.text.replace("```html", "").replace("```", "").strip()
+    report_html = generate_report_with_infinite_retry(prompt, retry_interval_minutes=15)
+    return "🇮🇳 Indian Market: Accurate Price Swing Radar", report_html
 
 # ==================== 7. US MARKET EXECUTION ====================
 def fetch_us_market():
@@ -245,8 +284,8 @@ def fetch_us_market():
     ഈ ഡാറ്റ വെച്ച് പ്രൊഫഷണൽ അനാലിസിസ് അടങ്ങിയ ഇമെയിൽ ബോഡി മലയാളത്തിൽ തയ്യാറാക്കുക (```html ... ``` ഫോർമാറ്റിൽ മാത്രം).
     """
 
-    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-    return "🇺🇸 US Market: Accurate Price Swing Radar", response.text.replace("```html", "").replace("```", "").strip()
+    report_html = generate_report_with_infinite_retry(prompt, retry_interval_minutes=15)
+    return "🇺🇸 US Market: Accurate Price Swing Radar", report_html
 
 # ==================== 8. ഇമെയിൽ അയക്കൽ ====================
 def send_email(subject, html_content):
@@ -269,4 +308,4 @@ if __name__ == "__main__":
         subject, content = fetch_indian_market()
 
     send_email(subject, content)
-    print(f"✅ {market_type.upper()} കൃത്യമായ വിലകളോടുകൂടിയ സ്വിംഗ് റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
+    print(f"✅ {market_type.upper()} സ്വിംഗ് റിപ്പോർട്ട് വിജയകരമായി അയച്ചു!")
