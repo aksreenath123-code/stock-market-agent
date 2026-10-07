@@ -1,0 +1,34 @@
+name: Nasdaq Momentum Screener
+
+on:
+  schedule:
+    # 20:30 UTC = 2:00 AM IST
+    # 0 = Sunday (Monday 2 AM IST)
+    # 2 = Tuesday (Wednesday 2 AM IST)
+    # 3 = Wednesday (Thursday 2 AM IST)
+    - cron: '30 20 * * 0,2,3'
+  workflow_dispatch: # മാന്വൽ ആയി റൺ ചെയ്യാൻ
+
+jobs:
+  run-screener:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install yfinance pandas google-genai pandas-ta
+
+      - name: Run Nasdaq Agent
+        env:
+          SREE_GEMINI_KEY: ${{ secrets.SREE_GEMINI_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+        run: python nasdaq_agent.py
