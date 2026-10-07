@@ -34,7 +34,7 @@ GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
 if not IPO_GEMINI_API_KEY:
-    print("⚠️ പിഴവ്: SREE_GEMINI_KEY ലഭ്യമായില്ല.")
+    print("⚠️ പിഴവ്: IPO_GEMINI_API_KEY ലഭ്യമായില്ല.")
     sys.exit(1)
 
 client = genai.Client(api_key=IPO_GEMINI_API_KEY)
