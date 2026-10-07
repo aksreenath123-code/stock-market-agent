@@ -28,16 +28,16 @@ import pandas_ta as ta
 from google import genai
 
 # API കോൺഫിഗറേഷൻ
-GEMINI_API_KEY = os.getenv("SREE_GEMINI_KEY") 
+IPO_GEMINI_API_KEY = os.getenv("IPO_GEMINI_API_KEY") 
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
-if not GEMINI_API_KEY:
+if not IPO_GEMINI_API_KEY:
     print("⚠️ പിഴവ്: SREE_GEMINI_KEY ലഭ്യമായില്ല.")
     sys.exit(1)
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=IPO_GEMINI_API_KEY)
 
 def get_ist_now():
     return datetime.now(timezone(timedelta(hours=5, minutes=30)))
