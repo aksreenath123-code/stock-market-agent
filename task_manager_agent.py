@@ -40,7 +40,7 @@ def analyze_tasks_with_ai(tasks_df):
     else:
         delayed_tasks, closed_tasks, open_tasks = [], [], []
 
-    # Highly intelligent prompt tailored for a Medical Clinic Launch
+    # Highly intelligent prompt tailored for a Medical Clinic Launch with Malayalam output
     prompt = f"""
     You are an elite Strategic Launch Director and AI Project Manager overseeing the setup of a new Medical Clinic. 
     The project encompasses critical sequential stages: Initial Setup, Banking & Finance Setup, Marketing, and Operations/Hiring.
@@ -50,11 +50,11 @@ def analyze_tasks_with_ai(tasks_df):
     2. Active/Open Tasks: {open_tasks}
     3. Closed Tasks: {closed_tasks}
     
-    Provide a deeply analytical, strategic HTML summary (do NOT use markdown blocks like ```html) containing:
-    - Executive Trajectory: A brief encouraging overview of the current clinic launch progress.
-    - Cascading Impact Analysis: Critically analyze the delayed tasks. Explain exactly how a delay in these specific tasks will create a bottleneck for subsequent clinic stages (e.g., how banking delays block equipment procurement, or how setup delays impact hiring timelines).
-    - Strategic Priorities: Give the top 2 to 3 absolute focus areas for the upcoming week to mitigate risks and keep the clinic launch on schedule.
-    Keep the tone executive, proactive, and highly insightful.
+    Provide a deeply analytical, strategic HTML summary strictly in **MALAYALAM LANGUAGE** (do NOT use markdown blocks like ```html) containing:
+    - Executive Trajectory (പ്രവർത്തന പുരോഗതി): A brief encouraging overview of the current clinic launch progress.
+    - Cascading Impact Analysis (കാലതാമസത്തിന്റെ പ്രത്യാഘാതങ്ങൾ): Critically analyze the delayed tasks. Explain exactly how a delay in these specific tasks will create a bottleneck for subsequent clinic stages (e.g., how banking delays block equipment procurement, or how setup delays impact hiring timelines).
+    - Strategic Priorities (മുൻഗണന നൽകേണ്ട കാര്യങ്ങൾ): Give the top 2 to 3 absolute focus areas for the upcoming week to mitigate risks and keep the clinic launch on schedule.
+    Keep the tone professional, executive, proactive, and highly insightful, ensuring the entire output is in fluent Malayalam.
     """
     
     try:
@@ -65,13 +65,13 @@ def analyze_tasks_with_ai(tasks_df):
         ai_summary = response.text.strip()
     except Exception as e:
         print(f"AI Error: {e}")
-        ai_summary = "<p>AI Strategic Analysis currently unavailable. Please review the tasks below.</p>"
+        ai_summary = "<p>AI അനാലിസിസ് നിലവിൽ ലഭ്യമല്ല. ദയവായി താഴെയുള്ള ടാസ്ക്കുകൾ പരിശോധിക്കുക.</p>"
         
     return ai_summary, tasks_df
 
 def send_weekly_task_report(ai_summary, tasks_df):
     now = datetime.now().strftime("%Y-%m-%d")
-    subject = f"🏥 Clinic Launch Master Strategy Report - {now}"
+    subject = f"🏥 ക്ലിനിക്ക് ലോഞ്ച് സ്ട്രാറ്റജി റിപ്പോർട്ട് - {now}"
     
     html_content = f"""
     <html>
@@ -86,33 +86,33 @@ def send_weekly_task_report(ai_summary, tasks_df):
             th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 13px; }}
             th {{ background-color: #2c3e50; color: white; text-transform: uppercase; font-size: 12px; }}
             h2, h3 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px; }}
-            .ai-box {{ background: #f8f9fa; padding: 20px; border-left: 5px solid #2980b9; margin-bottom: 25px; line-height: 1.6; }}
+            .ai-box {{ background: #f8f9fa; padding: 20px; border-left: 5px solid #2980b9; margin-bottom: 25px; line-height: 1.6; font-size: 14px; }}
             .color-legend {{ font-size: 12px; margin-bottom: 10px; padding: 10px; background: #eee; border-radius: 5px; display: inline-block; }}
         </style>
     </head>
     <body>
-        <h2>Clinic Launch Strategy & Master Task Report</h2>
+        <h2>ക്ലിനിക്ക് ലോഞ്ച് സ്ട്രാറ്റജി & ടാസ്ക് റിപ്പോർട്ട്</h2>
         <div class="ai-box">
             {ai_summary}
         </div>
         
-        <h3>📋 Master Task Overview</h3>
+        <h3>📋 ടാസ്ക് വിവരങ്ങൾ (Master Task Overview)</h3>
         <div class="color-legend">
-            <b>Legend:</b> 
-            <span style="background:#e6ffe6; padding:2px 5px;">🟩 Closed</span> | 
-            <span style="background:#fff9db; padding:2px 5px;">🟨 Open</span> | 
-            <span style="background:#f3e6ff; padding:2px 5px;">🟪 New</span> | 
-            <span style="background:#ffe6e6; padding:2px 5px; font-weight:bold;">🟥 Delayed (ETA Violated)</span>
+            <b>സൂചന (Legend):</b> 
+            <span style="background:#e6ffe6; padding:2px 5px;">🟩 പൂർത്തിയായവ (Closed)</span> | 
+            <span style="background:#fff9db; padding:2px 5px;">🟨 പുരോഗമിക്കുന്നവ (Open)</span> | 
+            <span style="background:#f3e6ff; padding:2px 5px;">🟪 പുതിയവ (New)</span> | 
+            <span style="background:#ffe6e6; padding:2px 5px; font-weight:bold;">🟥 വൈകിയവ (Delayed/ETA Violated)</span>
         </div>
         
         <table>
             <tr>
-                <th>Task Name</th>
-                <th>Category</th>
-                <th>ETA</th>
-                <th>Status</th>
-                <th>Owner</th>
-                <th>Comments/Gating</th>
+                <th>ടാസ്ക് (Task Name)</th>
+                <th>വിഭാഗം (Category)</th>
+                <th>തിയ്യതി (ETA)</th>
+                <th>സ്റ്റാറ്റസ് (Status)</th>
+                <th>ചുമതല (Owner)</th>
+                <th>അഭിപ്രായങ്ങൾ (Comments)</th>
             </tr>
     """
     
@@ -144,7 +144,7 @@ def send_weekly_task_report(ai_summary, tasks_df):
                 </tr>
             """
     else:
-        html_content += "<tr><td colspan='6'>No tasks found in the sheet.</td></tr>"
+        html_content += "<tr><td colspan='6'>ഷീറ്റിൽ ടാസ്ക്കുകൾ ലഭ്യമല്ല.</td></tr>"
          
     html_content += "</table></body></html>"
     
