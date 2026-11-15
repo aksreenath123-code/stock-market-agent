@@ -15,10 +15,9 @@ TASK_SHEET_ID = os.environ.get("TASK_SHEET_ID")
 
 def get_sheet_data(sheet_id):
     try:
-        # JSON ഇല്ലാതെ പബ്ലിക് ആക്സസ് വഴി നേരിട്ട് ഡാറ്റ എടുക്കുന്നു
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
         df = pd.read_csv(url)
-        df = df.fillna('') # ശൂന്യമായ കോളങ്ങൾ ശരിയാക്കാൻ
+        df = df.fillna('') 
         return df
     except Exception as e:
         print(f"Error fetching sheet data: {e}")
@@ -26,32 +25,36 @@ def get_sheet_data(sheet_id):
 
 def analyze_tasks_with_ai(tasks_df):
     client = genai.Client(api_key=GEMINI_API_KEY)
-    
     today = datetime.now()
-    pending_tasks = pd.DataFrame()
-    delayed_tasks = []
-    closed_tasks = []
     
     if not tasks_df.empty:
         tasks_df['ETA_Date'] = pd.to_datetime(tasks_df.get('ETA', ''), errors='coerce')
-        status_col = tasks_df.get('Status', '').astype(str).str.strip().str.lower()
+        tasks_df['Status_Clean'] = tasks_df.get('Status', '').astype(str).str.strip().str.lower()
         
-        pending_tasks = tasks_df[~status_col.isin(['closed', 'done'])].copy()
-        pending_tasks['Is_Delayed'] = pending_tasks['ETA_Date'] < today
+        # Identify delayed tasks (ETA crossed and not closed)
+        tasks_df['Is_Delayed'] = (tasks_df['ETA_Date'] < today) & (~tasks_df['Status_Clean'].isin(['closed', 'done']))
         
-        delayed_tasks = pending_tasks[pending_tasks['Is_Delayed']].to_dict(orient='records')
-        closed_tasks = tasks_df[status_col.isin(['closed', 'done'])].to_dict(orient='records')
+        delayed_tasks = tasks_df[tasks_df['Is_Delayed']].to_dict(orient='records')
+        closed_tasks = tasks_df[tasks_df['Status_Clean'].isin(['closed', 'done'])].to_dict(orient='records')
+        open_tasks = tasks_df[(~tasks_df['Is_Delayed']) & (~tasks_df['Status_Clean'].isin(['closed', 'done']))].to_dict(orient='records')
+    else:
+        delayed_tasks, closed_tasks, open_tasks = [], [], []
 
+    # Highly intelligent prompt tailored for a Medical Clinic Launch
     prompt = f"""
-    You are an AI Project Manager. Analyze this weekly task data:
-    1. Delayed Tasks (Missed ETA): {delayed_tasks}
-    2. Closed Tasks this week: {closed_tasks}
+    You are an elite Strategic Launch Director and AI Project Manager overseeing the setup of a new Medical Clinic. 
+    The project encompasses critical sequential stages: Initial Setup, Banking & Finance Setup, Marketing, and Operations/Hiring.
     
-    Provide a concise, professional HTML summary containing:
-    - An encouraging opening note for the weekend.
-    - Actionable feedback or priority suggestions for the delayed tasks.
-    - Appreciation for closed tasks.
-    Format the output directly as clean HTML (without markdown blocks like ```html).
+    Analyze this week's task data:
+    1. Delayed Tasks (Violated ETA): {delayed_tasks}
+    2. Active/Open Tasks: {open_tasks}
+    3. Closed Tasks: {closed_tasks}
+    
+    Provide a deeply analytical, strategic HTML summary (do NOT use markdown blocks like ```html) containing:
+    - Executive Trajectory: A brief encouraging overview of the current clinic launch progress.
+    - Cascading Impact Analysis: Critically analyze the delayed tasks. Explain exactly how a delay in these specific tasks will create a bottleneck for subsequent clinic stages (e.g., how banking delays block equipment procurement, or how setup delays impact hiring timelines).
+    - Strategic Priorities: Give the top 2 to 3 absolute focus areas for the upcoming week to mitigate risks and keep the clinic launch on schedule.
+    Keep the tone executive, proactive, and highly insightful.
     """
     
     try:
@@ -62,33 +65,46 @@ def analyze_tasks_with_ai(tasks_df):
         ai_summary = response.text.strip()
     except Exception as e:
         print(f"AI Error: {e}")
-        ai_summary = "<p>AI Analysis currently unavailable. Please review the pending tasks below.</p>"
+        ai_summary = "<p>AI Strategic Analysis currently unavailable. Please review the tasks below.</p>"
         
-    return ai_summary, pending_tasks
+    return ai_summary, tasks_df
 
-def send_weekly_task_report(ai_summary, pending_tasks):
+def send_weekly_task_report(ai_summary, tasks_df):
     now = datetime.now().strftime("%Y-%m-%d")
-    subject = f"📊 Weekly Task Master Report - {now}"
+    subject = f"🏥 Clinic Launch Master Strategy Report - {now}"
     
     html_content = f"""
     <html>
     <head>
         <style>
             body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; }}
-            .red-alert {{ color: #c0392b; font-weight: bold; background-color: #fdebd0; }}
+            .tr-red {{ background-color: #ffe6e6; }} /* Light Red for Delayed */
+            .tr-green {{ background-color: #e6ffe6; }} /* Light Green for Closed */
+            .tr-yellow {{ background-color: #fff9db; }} /* Light Yellow for Open */
+            .tr-purple {{ background-color: #f3e6ff; }} /* Light Purple for New */
             table {{ border-collapse: collapse; width: 100%; margin-top: 15px; margin-bottom: 30px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
             th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 13px; }}
             th {{ background-color: #2c3e50; color: white; text-transform: uppercase; font-size: 12px; }}
             h2, h3 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px; }}
+            .ai-box {{ background: #f8f9fa; padding: 20px; border-left: 5px solid #2980b9; margin-bottom: 25px; line-height: 1.6; }}
+            .color-legend {{ font-size: 12px; margin-bottom: 10px; padding: 10px; background: #eee; border-radius: 5px; display: inline-block; }}
         </style>
     </head>
     <body>
-        <h2>Weekly Master Task Report</h2>
-        <div style="background: #f8f9fa; padding: 15px; border-left: 4px solid #3498db; margin-bottom: 20px;">
+        <h2>Clinic Launch Strategy & Master Task Report</h2>
+        <div class="ai-box">
             {ai_summary}
         </div>
         
-        <h3>📝 Pending & Delayed Tasks Overview</h3>
+        <h3>📋 Master Task Overview</h3>
+        <div class="color-legend">
+            <b>Legend:</b> 
+            <span style="background:#e6ffe6; padding:2px 5px;">🟩 Closed</span> | 
+            <span style="background:#fff9db; padding:2px 5px;">🟨 Open</span> | 
+            <span style="background:#f3e6ff; padding:2px 5px;">🟪 New</span> | 
+            <span style="background:#ffe6e6; padding:2px 5px; font-weight:bold;">🟥 Delayed (ETA Violated)</span>
+        </div>
+        
         <table>
             <tr>
                 <th>Task Name</th>
@@ -100,10 +116,22 @@ def send_weekly_task_report(ai_summary, pending_tasks):
             </tr>
     """
     
-    if not pending_tasks.empty:
-        for _, row in pending_tasks.iterrows():
+    if not tasks_df.empty:
+        for _, row in tasks_df.iterrows():
+            status = str(row.get('Status', '')).strip().lower()
+            is_delayed = row.get('Is_Delayed', False)
+            
+            # Color coding logic
+            if is_delayed:
+                row_class = "tr-red"
+            elif status in ['closed', 'done']:
+                row_class = "tr-green"
+            elif status == 'new':
+                row_class = "tr-purple"
+            else:
+                row_class = "tr-yellow"
+                
             eta_str = row['ETA_Date'].strftime('%Y-%m-%d') if pd.notnull(row.get('ETA_Date')) else str(row.get('ETA', 'N/A'))
-            row_class = "red-alert" if row.get('Is_Delayed', False) else ""
             
             html_content += f"""
                 <tr class="{row_class}">
@@ -116,7 +144,7 @@ def send_weekly_task_report(ai_summary, pending_tasks):
                 </tr>
             """
     else:
-        html_content += "<tr><td colspan='6'>No pending tasks! 🎉</td></tr>"
+        html_content += "<tr><td colspan='6'>No tasks found in the sheet.</td></tr>"
          
     html_content += "</table></body></html>"
     
@@ -137,11 +165,11 @@ def send_weekly_task_report(ai_summary, pending_tasks):
         print(f"Failed to send email: {e}")
 
 if __name__ == "__main__":
-    print("Fetching data from Task Sheet (Public Link)...")
+    print("Fetching data from Task Sheet...")
     tasks_df = get_sheet_data(TASK_SHEET_ID)
     
     if not tasks_df.empty:
-        ai_summary, pending_tasks = analyze_tasks_with_ai(tasks_df)
-        send_weekly_task_report(ai_summary, pending_tasks)
+        ai_summary, tasks_df = analyze_tasks_with_ai(tasks_df)
+        send_weekly_task_report(ai_summary, tasks_df)
     else:
         print("No task data found or sheet is empty.")
