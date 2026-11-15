@@ -5,19 +5,28 @@ import pandas as pd
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from google import genai
+import warnings
+
+# Ignore pandas warnings for cleaner logs
+warnings.filterwarnings('ignore')
 
 # Secrets
 GMAIL_SENDER = os.environ.get("GMAIL_SENDER")
 GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 GMAIL_RECEIVERS = os.environ.get("GMAIL_RECEIVERS", "").split(',')
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-EXPENSE_SHEET_ID = os.environ.get("EXPENSE_SHEET_ID") # പുതിയ സീക്രട്ട്
+EXPENSE_SHEET_ID = os.environ.get("EXPENSE_SHEET_ID")
 
 def get_sheet_data(sheet_id):
     try:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
         df = pd.read_csv(url)
-        df = df.fillna('') 
+        
+        # ഹെഡിംഗുകളിലെ സ്പേസുകൾ ഒഴിവാക്കാൻ (Fix for KeyError)
+        df.columns = df.columns.str.strip() 
+        
+        # ശൂന്യമായ (NaN) ഡാറ്റ സുരക്ഷിതമായി ഫിൽ ചെയ്യാൻ
+        df = df.astype(object).fillna('') 
         return df
     except Exception as e:
         print(f"Error fetching sheet data: {e}")
@@ -27,12 +36,15 @@ def analyze_expenses_with_ai(expense_df):
     client = genai.Client(api_key=GEMINI_API_KEY)
     
     if not expense_df.empty:
-        # Amount കോളം നമ്പറിലേക്ക് മാറ്റുന്നു
-        expense_df['Amount_Num'] = pd.to_numeric(expense_df.get('Amount', 0), errors='coerce').fillna(0)
+        # Amount കോളം കൃത്യമായി നമ്പറിലേക്ക് മാറ്റുന്നു
+        amount_col = 'Amount' if 'Amount' in expense_df.columns else expense_df.columns[1]
+        expense_df['Amount_Num'] = pd.to_numeric(expense_df[amount_col], errors='coerce').fillna(0)
         total_expense = expense_df['Amount_Num'].sum()
         
-        # ഏറ്റവും കൂടുതൽ ചിലവായ ടാസ്ക്കുകൾ കണ്ടെത്തുന്നു
-        top_expenses = expense_df.nlargest(5, 'Amount_Num')[['Task', 'Amount', 'Spend By']].to_dict(orient='records')
+        # കോളം പേരുകൾ കൃത്യമായി എടുക്കാൻ (KeyError ഒഴിവാക്കാൻ)
+        cols_to_extract = [col for col in ['Task', 'Amount', 'Spend By'] if col in expense_df.columns]
+        
+        top_expenses = expense_df.nlargest(5, 'Amount_Num')[cols_to_extract].to_dict(orient='records')
         all_expenses = expense_df.to_dict(orient='records')
     else:
         total_expense = 0
