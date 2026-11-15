@@ -7,12 +7,19 @@ from email.mime.text import MIMEText
 from google import genai
 
 # Secrets (ഇതിൽ JSON ആവശ്യമില്ല)
-GMAIL_SENDER = os.environ.get("SENDER_EMAIL")
-GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
-GMAIL_RECEIVERS = os.environ.get("GMAIL_RECEIVERS").split(',')
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-TASK_SHEET_ID = os.environ.get("TRIDENT_TASK_SHEET_ID")
+#GMAIL_SENDER = os.environ.get("SENDER_EMAIL")
+#GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
+#GMAIL_RECEIVERS = os.environ.get("GMAIL_RECEIVERS").split(',')
+#GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+#TASK_SHEET_ID = os.environ.get("TRIDENT_TASK_SHEET_ID")
 
+
+# Secrets (Corrected to match YAML left-side variables)
+GMAIL_SENDER = os.environ.get("GMAIL_SENDER")
+GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
+GMAIL_RECEIVERS = os.environ.get("GMAIL_RECEIVERS", "").split(',')
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+TASK_SHEET_ID = os.environ.get("TASK_SHEET_ID")
 def get_sheet_data(sheet_id):
     try:
         # JSON ഇല്ലാതെ പബ്ലിക് ആക്സസ് വഴി നേരിട്ട് ഡാറ്റ എടുക്കുന്നു
