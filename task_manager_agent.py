@@ -7,11 +7,11 @@ from email.mime.text import MIMEText
 from google import genai
 
 # Secrets (ഇതിൽ JSON ആവശ്യമില്ല)
-GMAIL_SENDER = os.environ.get("GMAIL_SENDER")
+GMAIL_SENDER = os.environ.get("SENDER_EMAIL")
 GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 GMAIL_RECEIVERS = os.environ.get("GMAIL_RECEIVERS").split(',')
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-TASK_SHEET_ID = os.environ.get("TASK_SHEET_ID")
+TASK_SHEET_ID = os.environ.get("TRIDENT_TASK_SHEET_ID")
 
 def get_sheet_data(sheet_id):
     try:
