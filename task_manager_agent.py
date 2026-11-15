@@ -6,20 +6,13 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from google import genai
 
-# Secrets (ഇതിൽ JSON ആവശ്യമില്ല)
-#GMAIL_SENDER = os.environ.get("SENDER_EMAIL")
-#GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
-#GMAIL_RECEIVERS = os.environ.get("GMAIL_RECEIVERS").split(',')
-#GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-#TASK_SHEET_ID = os.environ.get("TRIDENT_TASK_SHEET_ID")
-
-
 # Secrets (Corrected to match YAML left-side variables)
 GMAIL_SENDER = os.environ.get("GMAIL_SENDER")
 GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 GMAIL_RECEIVERS = os.environ.get("GMAIL_RECEIVERS", "").split(',')
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TASK_SHEET_ID = os.environ.get("TASK_SHEET_ID")
+
 def get_sheet_data(sheet_id):
     try:
         # JSON ഇല്ലാതെ പബ്ലിക് ആക്സസ് വഴി നേരിട്ട് ഡാറ്റ എടുക്കുന്നു
@@ -112,19 +105,7 @@ def send_weekly_task_report(ai_summary, pending_tasks):
             eta_str = row['ETA_Date'].strftime('%Y-%m-%d') if pd.notnull(row.get('ETA_Date')) else str(row.get('ETA', 'N/A'))
             row_class = "red-alert" if row.get('Is_Delayed', False) else ""
             
-#            html_content += f"""
-#                <tr class="{row_class}">
-#                    <td><b>{row.get('Task list', '')}</b></td>
-#                    <td>{row.get('Category', '')}</td>
-#                    <td>{eta_str}</td>
-#                    <td>{row.get('Status', 'Open')}</td>
-#                    <td>{row.get('Owner', '')}</td>
-#                    <td>{row.get('Comments/Gating', '')}</td>
-#                </tr>
-#            """
-#
-
-html_content += f"""
+            html_content += f"""
                 <tr class="{row_class}">
                     <td><b>{row.get('Task list', row.iloc[0] if len(row) > 0 else '')}</b></td>
                     <td>{row.get('Category', '')}</td>
@@ -134,10 +115,8 @@ html_content += f"""
                     <td>{row.get('Comments/Gating', row.iloc[6] if len(row) > 6 else '')}</td>
                 </tr>
             """
-
-            
     else:
-         html_content += "<tr><td colspan='6'>No pending tasks! 🎉</td></tr>"
+        html_content += "<tr><td colspan='6'>No pending tasks! 🎉</td></tr>"
          
     html_content += "</table></body></html>"
     
