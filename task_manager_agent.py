@@ -112,16 +112,30 @@ def send_weekly_task_report(ai_summary, pending_tasks):
             eta_str = row['ETA_Date'].strftime('%Y-%m-%d') if pd.notnull(row.get('ETA_Date')) else str(row.get('ETA', 'N/A'))
             row_class = "red-alert" if row.get('Is_Delayed', False) else ""
             
-            html_content += f"""
+#            html_content += f"""
+#                <tr class="{row_class}">
+#                    <td><b>{row.get('Task list', '')}</b></td>
+#                    <td>{row.get('Category', '')}</td>
+#                    <td>{eta_str}</td>
+#                    <td>{row.get('Status', 'Open')}</td>
+#                    <td>{row.get('Owner', '')}</td>
+#                    <td>{row.get('Comments/Gating', '')}</td>
+#                </tr>
+#            """
+#
+
+html_content += f"""
                 <tr class="{row_class}">
-                    <td><b>{row.get('Task list', '')}</b></td>
+                    <td><b>{row.get('Task list', row.iloc[0] if len(row) > 0 else '')}</b></td>
                     <td>{row.get('Category', '')}</td>
                     <td>{eta_str}</td>
                     <td>{row.get('Status', 'Open')}</td>
-                    <td>{row.get('Owner', '')}</td>
-                    <td>{row.get('Comments/Gating', '')}</td>
+                    <td>{row.get('Owner', row.iloc[5] if len(row) > 5 else '')}</td>
+                    <td>{row.get('Comments/Gating', row.iloc[6] if len(row) > 6 else '')}</td>
                 </tr>
             """
+
+            
     else:
          html_content += "<tr><td colspan='6'>No pending tasks! 🎉</td></tr>"
          
