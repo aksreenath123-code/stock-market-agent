@@ -30,6 +30,6 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GMAIL_SENDER: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          GMAIL_RECEIVER: ${{ secrets.GMAIL_RECEIVERS }}
+          GMAIL_RECEIVERS: ${{ secrets.GMAIL_RECEIVERS }}
           TASK_SHEET_ID: ${{ secrets.TRIDENT_TASK_SHEET_ID }}
         run: python -u task_manager_agent.py
