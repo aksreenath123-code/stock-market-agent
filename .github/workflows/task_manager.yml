@@ -1,4 +1,3 @@
-YAML
 name: Weekly Task Manager AI
 
 on:
@@ -10,6 +9,8 @@ on:
 jobs:
   run_task_report:
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # സ്ക്രിപ്റ്റ് ഹാങ് ആകാതിരിക്കാനുള്ള സുരക്ഷ
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -29,6 +30,6 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GMAIL_SENDER: ${{ secrets.SENDER_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          GMAIL_RECEIVER: ${{ secrets.GMAIL_RECEIVERS }} 
+          GMAIL_RECEIVER: ${{ secrets.GMAIL_RECEIVERS }}
           TASK_SHEET_ID: ${{ secrets.TRIDENT_TASK_SHEET_ID }}
-        run: python task_manager_agent.py
+        run: python -u task_manager_agent.py
