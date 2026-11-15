@@ -32,6 +32,3 @@ jobs:
           GMAIL_RECEIVER: ${{ secrets.GMAIL_RECEIVERS }} 
           TASK_SHEET_ID: ${{ secrets.TRIDENT_TASK_SHEET_ID }}
         run: python task_manager_agent.py
-          GMAIL_RECEIVER: ${{ secrets.GMAIL_RECEIVER }} 
-          TASK_SHEET_ID: ${{ secrets.TASK_SHEET_ID }}
-        run: python task_manager_agent.py
